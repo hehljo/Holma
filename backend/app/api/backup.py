@@ -18,11 +18,60 @@ from app.backup.executor import BackupExecutor
 backup_bp = Blueprint('backup', __name__)
 
 
+def _running_source_ids():
+    """Source ids that a currently running backup is working on.
+
+    Used to stop a second run on the same source: two runs writing the same
+    mirror would corrupt it, and their retention passes would race.
+    """
+    running = Backup.query.filter_by(status='running').all()
+    if not running:
+        return set()
+    rows = BackupSourceResult.query.filter(
+        BackupSourceResult.backup_id.in_([b.id for b in running]),
+        BackupSourceResult.status.in_(['pending', 'running'])
+    ).all()
+    return {r.source_id for r in rows}
+
+
+@backup_bp.route('/running-sources', methods=['GET'])
+@token_required
+def get_running_sources(current_user):
+    """List source ids currently being backed up, for per-source UI state."""
+    return jsonify({'source_ids': sorted(_running_source_ids())}), 200
+
+
 @backup_bp.route('/start', methods=['POST'])
 @token_required
 def start_backup(current_user):
     """Start a new backup"""
     data = request.get_json() or {}
+
+    requested_sources = data.get('sources', [])
+    if requested_sources:
+        # A per-source run must not collide with a run already touching it.
+        busy = _running_source_ids() & set(requested_sources)
+        if busy:
+            return jsonify({
+                'error': 'Backup already running for these sources',
+                'sources': sorted(busy)
+            }), 409
+
+        # The executor silently drops unknown and disabled sources, which would
+        # turn a click into a run over nothing that then reports success. Say so
+        # instead.
+        from app.api.sources import load_sources
+        known = {s.get('id'): s for s in load_sources()}
+        unknown = [s for s in requested_sources if s not in known]
+        if unknown:
+            return jsonify({
+                'error': 'Unknown sources', 'sources': sorted(unknown)
+            }), 404
+        disabled = [s for s in requested_sources if not known[s].get('enabled', True)]
+        if disabled:
+            return jsonify({
+                'error': 'Sources are disabled', 'sources': sorted(disabled)
+            }), 409
 
     # Create backup record
     backup_id = str(uuid.uuid4())
@@ -212,7 +261,10 @@ def list_downloadable(current_user, source_id):
             })
 
     # Generic directories (supabase dumps etc.)
+    from app.backup.executor import WORKING_DIR_NAMES
     for d in sorted(glob.glob(os.path.join(backup_dir, '*')), reverse=True):
+        if os.path.basename(d) in WORKING_DIR_NAMES:
+            continue
         if os.path.isdir(d) and not d.endswith('.git') and not d.endswith('_restore_tmp'):
             total = sum(
                 os.path.getsize(os.path.join(dp, f))

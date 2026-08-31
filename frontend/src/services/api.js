@@ -76,6 +76,9 @@ export const backupAPI = {
   getStats: () =>
     api.get('/backup/stats'),
 
+  getRunningSources: () =>
+    api.get('/backup/running-sources'),
+
   deleteAll: () =>
     api.delete('/backup/all?confirm=true'),
 }

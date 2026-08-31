@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, TestTube, Database } from 'lucide-react'
-import { sourcesAPI } from '../services/api'
+import { useState, useEffect, useRef } from 'react'
+import { Plus, Edit2, Trash2, TestTube, Database, Play, Loader2 } from 'lucide-react'
+import { sourcesAPI, backupAPI } from '../services/api'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
@@ -17,10 +17,33 @@ export default function Sources() {
   const [isSaving, setIsSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, source: null })
   const [isDeleting, setIsDeleting] = useState(false)
+  const [runningSources, setRunningSources] = useState([])
+  const [startingSource, setStartingSource] = useState(null)
+  const pollRef = useRef(null)
 
   useEffect(() => {
     loadSources()
+    loadRunningSources()
+    return () => clearTimeout(pollRef.current)
   }, [])
+
+  // Poll while something is running so the spinner clears on its own; idle
+  // pages stay quiet.
+  useEffect(() => {
+    clearTimeout(pollRef.current)
+    if (runningSources.length === 0) return
+    pollRef.current = setTimeout(loadRunningSources, 3000)
+    return () => clearTimeout(pollRef.current)
+  }, [runningSources])
+
+  const loadRunningSources = async () => {
+    try {
+      const response = await backupAPI.getRunningSources()
+      setRunningSources(response.data.source_ids || [])
+    } catch (error) {
+      console.error('Error loading running sources:', error)
+    }
+  }
 
   const loadSources = async () => {
     try {
@@ -63,6 +86,27 @@ export default function Sources() {
     } catch (error) {
       console.error('Error testing source:', error)
       toast.error(error.response?.data?.error || 'Connection test failed', { id: loadingToast })
+    }
+  }
+
+  const handleBackupNow = async (source) => {
+    setStartingSource(source.id)
+    const loadingToast = toast.loading(t('sources.backupStarting', { name: source.name }))
+    try {
+      await backupAPI.start({ sources: [source.id], parallel: 1 })
+      toast.success(t('sources.backupStarted', { name: source.name }), { id: loadingToast })
+      setRunningSources((prev) => (prev.includes(source.id) ? prev : [...prev, source.id]))
+    } catch (error) {
+      console.error('Error starting backup:', error)
+      // 409 means another run already has this source - not a failure the user
+      // needs to act on, so say what is happening instead of "error".
+      const message = error.response?.status === 409
+        ? t('sources.backupAlreadyRunning', { name: source.name })
+        : error.response?.data?.error || t('common.error')
+      toast.error(message, { id: loadingToast })
+      loadRunningSources()
+    } finally {
+      setStartingSource(null)
     }
   }
 
@@ -144,7 +188,38 @@ export default function Sources() {
                   <p className="truncate text-sm text-gray-600">{source.type.toUpperCase()}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
+              <div className="grid grid-cols-4 gap-2 sm:flex sm:items-center">
+                {(() => {
+                  const isRunning = runningSources.includes(source.id)
+                  const isStarting = startingSource === source.id
+                  const busy = isRunning || isStarting
+                  // A disabled source is filtered out by the executor, so the
+                  // button must not pretend it would do something.
+                  const blocked = busy || !source.enabled
+                  const label = !source.enabled
+                    ? t('sources.backupNowDisabled')
+                    : isRunning
+                      ? t('sources.backupRunning')
+                      : t('sources.backupNow')
+                  return (
+                    <button
+                      onClick={() => handleBackupNow(source)}
+                      disabled={blocked}
+                      className={clsx(
+                        'icon-btn',
+                        blocked
+                          ? 'text-gray-400 cursor-not-allowed'
+                          : 'text-green-600 hover:bg-green-50'
+                      )}
+                      title={label}
+                      aria-label={label}
+                    >
+                      {busy
+                        ? <Loader2 className="w-5 h-5 animate-spin" />
+                        : <Play className="w-5 h-5" />}
+                    </button>
+                  )
+                })()}
                 <button
                   onClick={() => handleTest(source.id)}
                   className="icon-btn text-blue-600 hover:bg-blue-50"
