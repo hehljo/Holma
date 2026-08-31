@@ -3,6 +3,12 @@ GitHub Backup Handler
 Best Practice 02/2026: Uses --mirror clone for complete repository backup,
 extends BackupHandler, retry with exponential backoff.
 Supports discovery_mode 'all' (auto-discover via API) or 'manual' (explicit list).
+
+Layout: mirrors are kept in a working directory (_mirrors/) and are not
+versioned - they exist so each run only fetches new objects. Every run then
+writes one timestamped tar.gz per repository next to it. Those archives carry
+the timestamp the executor's retention cleanup matches on, so the configured
+number of versions is what actually survives on disk.
 """
 import subprocess
 import logging
@@ -10,12 +16,16 @@ import os
 import time
 import re
 import base64
+from datetime import datetime
 from app.backup.base import BackupHandler
+from app.backup.sources.git_archive import GitMirrorArchiveMixin, MIRROR_DIRNAME
 
 logger = logging.getLogger(__name__)
 
+__all__ = ['GitHubBackup', 'MIRROR_DIRNAME']
 
-class GitHubBackup(BackupHandler):
+
+class GitHubBackup(GitMirrorArchiveMixin, BackupHandler):
     """Handles GitHub repository backups using mirror clones"""
 
     def _resolve_repositories(self, token):
@@ -75,13 +85,17 @@ class GitHubBackup(BackupHandler):
         size_synced = 0
         options = self.source_config.get('options', {})
 
+        mirror_root = self._mirror_root()
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
         for repo in repositories:
             try:
                 self.log(f"Backing up repository: {repo}")
 
                 # Parse repo (user/repo or org/repo)
                 repo_dir = repo.replace('/', '_')
-                repo_path = os.path.join(self.dest_path, f"{repo_dir}.git")
+                repo_path = os.path.join(mirror_root, f"{repo_dir}.git")
+                self._migrate_legacy_mirror(repo_dir, repo_path)
 
                 repo_url = f"https://github.com/{repo}.git"
                 auth_header = self._auth_header(token)
@@ -123,15 +137,13 @@ class GitHubBackup(BackupHandler):
                     self.log(f"ERROR: git command returned code {result.returncode}")
                     continue
 
-                # Get repository size
-                repo_size = self._get_directory_size(repo_path)
-                size_synced += repo_size
                 files_synced += 1
 
                 # Backup wiki if configured
                 if options.get('include_wikis', False):
                     wiki_url = f"https://github.com/{repo}.wiki.git"
-                    wiki_path = os.path.join(self.dest_path, f"{repo_dir}.wiki.git")
+                    wiki_path = os.path.join(mirror_root, f"{repo_dir}.wiki.git")
+                    self._migrate_legacy_mirror(f"{repo_dir}.wiki", wiki_path)
                     try:
                         if os.path.exists(wiki_path):
                             subprocess.run(
@@ -158,6 +170,12 @@ class GitHubBackup(BackupHandler):
                         ['git', '-C', repo_path, 'lfs', 'fetch', '--all'],
                         capture_output=True, timeout=600
                     )
+
+                # One timestamped archive per repository. This is the artifact
+                # the retention cleanup rotates - the mirror itself is only the
+                # incremental working copy and stays outside versioning.
+                archive_size = self._archive_repository(repo, repo_dir, repo_path, timestamp)
+                size_synced += archive_size
 
             except Exception as e:
                 self.log(f"ERROR backing up {repo}: {str(e)}")

@@ -15,6 +15,7 @@ from app.models.backup import Backup, BackupSourceResult, Setting
 from app.config import Config
 from app.backup.sources.smb import SMBBackup
 from app.backup.sources.github import GitHubBackup
+from app.backup.sources.git_archive import MIRROR_DIRNAME
 from app.backup.sources.rclone import RcloneBackup
 from app.backup.sources.local import LocalBackup
 from app.backup.sources.git import (
@@ -35,6 +36,10 @@ from app.backup.sources.supabase import SupabaseBackup
 from app.notifications.manager import NotificationManager
 
 logger = logging.getLogger(__name__)
+
+# Directory names inside a source folder that hold incremental working state
+# rather than backup versions. Retention must never delete these.
+WORKING_DIR_NAMES = {MIRROR_DIRNAME}
 
 
 class BackupExecutor:
@@ -357,6 +362,17 @@ class BackupExecutor:
             db.session.add(result)
             db.session.commit()
 
+            # Local, not on self: sources run in parallel threads and share
+            # this executor instance.
+            retention_ran = []
+
+            def run_retention_once():
+                """Rotate this source's versions, at most once per source."""
+                if retention_ran:
+                    return ''
+                retention_ran.append(True)
+                return self._cleanup_old_backup_versions(source_id)
+
             try:
                 # Get handler for source type
                 handler_class = self.handlers.get(source_type)
@@ -380,7 +396,10 @@ class BackupExecutor:
 
                 handler._live_log_callback = _flush_logs
                 backup_result = handler.backup()
-                cleanup_logs = self._cleanup_old_backup_versions(source_id)
+                # Retention also has to run when the handler failed - see the
+                # finally block. A source that keeps failing would otherwise
+                # never rotate and grow without limit.
+                cleanup_logs = run_retention_once()
 
                 # Update result
                 result.status = 'completed'
@@ -413,6 +432,20 @@ class BackupExecutor:
                 result.duration = int((result.completed_at - result.started_at).total_seconds())
                 db.session.commit()
 
+                # A source whose handler keeps failing (expired credentials,
+                # host down) must still rotate its existing versions, or it
+                # grows until the disk is full while the visible error talks
+                # about something else entirely.
+                try:
+                    cleanup_logs = run_retention_once()
+                    if cleanup_logs:
+                        result.logs = '\n'.join(
+                            part for part in [result.logs or '', cleanup_logs] if part
+                        )
+                        db.session.commit()
+                except Exception as cleanup_error:
+                    logger.error(f"Retention after failure of {source_id}: {cleanup_error}")
+
                 return {
                     'status': 'failed',
                     'size_synced': 0
@@ -438,6 +471,14 @@ class BackupExecutor:
         for name in os.listdir(source_dir):
             path = os.path.join(source_dir, name)
             if name.endswith('_restore_tmp'):
+                continue
+            # Incremental working copies (e.g. GitHub mirrors) are not backup
+            # versions: deleting them would force a full re-clone next run.
+            if name in WORKING_DIR_NAMES:
+                continue
+            # Partial artifacts from an interrupted run must never count as a
+            # kept version.
+            if name.startswith('.'):
                 continue
             match = re.search(r'(\d{8}_\d{6})', name)
             if not match:

@@ -9,12 +9,14 @@ import logging
 import os
 import time
 import re
+from datetime import datetime
 from app.backup.base import BackupHandler
+from app.backup.sources.git_archive import GitMirrorArchiveMixin
 
 logger = logging.getLogger(__name__)
 
 
-class GitBackup(BackupHandler):
+class GitBackup(GitMirrorArchiveMixin, BackupHandler):
     """Handles Git repository backups from various platforms using --mirror"""
 
     # Platform-specific URL templates
@@ -47,13 +49,17 @@ class GitBackup(BackupHandler):
         size_synced = 0
         options = self.source_config.get('options', {})
 
+        mirror_root = self._mirror_root()
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
         for repo in repositories:
             try:
                 self.log(f"Backing up repository: {repo}")
 
                 # Use .git suffix for mirror repos for clarity
                 repo_dir = repo.replace('/', '_')
-                repo_path = os.path.join(self.dest_path, f"{repo_dir}.git")
+                repo_path = os.path.join(mirror_root, f"{repo_dir}.git")
+                self._migrate_legacy_mirror(repo_dir, repo_path)
 
                 # Build clone/pull URL with token
                 repo_url = self._build_repo_url(platform, repo, token, host)
@@ -82,9 +88,6 @@ class GitBackup(BackupHandler):
                     self.log(f"ERROR: git command returned code {result.returncode}")
                     continue
 
-                # Get repository size
-                repo_size = self._get_directory_size(repo_path)
-                size_synced += repo_size
                 files_synced += 1
 
                 # Handle LFS if configured
@@ -99,7 +102,8 @@ class GitBackup(BackupHandler):
                 # Backup wiki if configured and exists
                 if options.get('include_wikis', False):
                     wiki_url = repo_url.replace('.git', '.wiki.git')
-                    wiki_path = os.path.join(self.dest_path, f"{repo_dir}.wiki.git")
+                    wiki_path = os.path.join(mirror_root, f"{repo_dir}.wiki.git")
+                    self._migrate_legacy_mirror(f"{repo_dir}.wiki", wiki_path)
 
                     try:
                         if os.path.exists(wiki_path):
@@ -116,10 +120,15 @@ class GitBackup(BackupHandler):
                                 text=True,
                                 timeout=120
                             )
-                        size_synced += self._get_directory_size(wiki_path)
                         self.log(f"Wiki backed up for {repo}")
                     except Exception:
                         self.log(f"No wiki found for {repo}")
+
+                # One timestamped archive per repository - this is what
+                # retention rotates; the mirror stays outside versioning.
+                size_synced += self._archive_repository(
+                    repo, repo_dir, repo_path, timestamp
+                )
 
             except subprocess.TimeoutExpired:
                 self.log(f"ERROR: Timeout backing up {repo}")
