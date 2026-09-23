@@ -5,7 +5,6 @@ Coordinates notifications across multiple channels
 import logging
 from typing import Dict, List, Optional
 from datetime import datetime
-import json
 import os
 
 from .base import NotificationChannel, NotificationPriority, NotificationType
@@ -34,8 +33,8 @@ class NotificationManager:
                 logger.warning(f"Notification config not found: {self.config_path}")
                 return
 
-            with open(self.config_path, 'r') as f:
-                config = json.load(f)
+            from app.notification_config import load_notification_config
+            config = load_notification_config(self.config_path)
 
             # Import channel classes dynamically
             from .channels import (
@@ -68,12 +67,15 @@ class NotificationManager:
                         else:
                             logger.error(f"Invalid config for {channel_type}: {error}")
                     except Exception as e:
-                        logger.error(f"Failed to initialize {channel_type} channel: {e}")
+                        logger.error(
+                            'Failed to initialize %s channel: %s',
+                            channel_type, type(e).__name__,
+                        )
                 else:
                     logger.warning(f"Unknown notification channel type: {channel_type}")
 
         except Exception as e:
-            logger.error(f"Failed to load notification config: {e}")
+            logger.error('Failed to load notification config: %s', type(e).__name__)
 
     def notify(self,
                title: str,
@@ -116,7 +118,10 @@ class NotificationManager:
                 success = channel.send_with_retry(title, message, priority, notification_type, data)
                 results[channel.name] = success
             except Exception as e:
-                logger.error(f"Error sending notification via {channel.name}: {e}")
+                logger.error(
+                    'Error sending notification via %s: %s',
+                    channel.name, type(e).__name__,
+                )
                 results[channel.name] = False
 
         return results

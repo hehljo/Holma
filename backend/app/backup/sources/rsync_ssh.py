@@ -5,6 +5,8 @@ For NAS systems, remote servers, and SSH-enabled devices
 import subprocess
 import logging
 import os
+import re
+import shlex
 from app.backup.base import BackupHandler
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,12 @@ class RsyncSSHBackup(BackupHandler):
 
         # Get username
         username = self.source_config.get('username') or self._get_env_credential(credentials.get('username_env', 'SSH_USER'))
+        if not isinstance(username, str) or not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', username):
+            raise Exception("Invalid SSH username")
+        if not isinstance(host, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,253}', host):
+            raise Exception("Invalid SSH host")
+        if not isinstance(remote_path, str) or any(c in remote_path for c in ('\0', '\n', '\r')):
+            raise Exception("Invalid remote path")
 
         # Check for SSH key
         ssh_key = self.source_config.get('ssh_key_path') or credentials.get('ssh_key_path', '')
@@ -39,7 +47,8 @@ class RsyncSSHBackup(BackupHandler):
             self.log(f"Starting rsync backup from {host}:{remote_path}")
 
             # Build rsync command as array (no shell interpretation)
-            cmd = ['rsync', '-avz', '--stats']
+            cmd = ['rsync', '-avz', '--stats', '--protect-args']
+            process_env = os.environ.copy()
 
             options = self.source_config.get('options', {})
 
@@ -77,7 +86,7 @@ class RsyncSSHBackup(BackupHandler):
                 ssh_cmd_parts.extend(['-o', 'UserKnownHostsFile=/dev/null'])
 
             # Pass SSH command to rsync
-            cmd.extend(['-e', ' '.join(ssh_cmd_parts)])
+            cmd.extend(['-e', shlex.join(ssh_cmd_parts)])
 
             # Handle password auth via SSHPASS env var (not command line)
             password = self.source_config.get('password', '')
@@ -87,7 +96,7 @@ class RsyncSSHBackup(BackupHandler):
                     password = self._get_env_credential(password_env, required=False)
                 if password:
                     cmd = ['sshpass', '-e'] + cmd
-                    os.environ['SSHPASS'] = password
+                    process_env['SSHPASS'] = password
 
             # Source and destination
             source = f"{username}@{host}:{remote_path}"
@@ -104,11 +113,9 @@ class RsyncSSHBackup(BackupHandler):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
+                env=process_env,
             )
-
-            # Clean up SSHPASS from environment
-            os.environ.pop('SSHPASS', None)
 
             if result.stdout:
                 self.log(result.stdout)
@@ -150,11 +157,9 @@ class RsyncSSHBackup(BackupHandler):
             }
 
         except subprocess.TimeoutExpired:
-            os.environ.pop('SSHPASS', None)
             self.log("ERROR: Rsync backup timeout")
             raise Exception("Rsync backup timeout")
         except Exception as e:
-            os.environ.pop('SSHPASS', None)
             self.log(f"ERROR: Rsync backup failed")
             raise
 

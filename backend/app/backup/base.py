@@ -4,8 +4,60 @@ Base class for backup handlers
 from abc import ABC, abstractmethod
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
+
+
+class InvalidBackupResult(ValueError):
+    """Raised when a handler violates the backup result contract."""
+
+
+def normalize_backup_result(result):
+    """Validate and normalize a handler result without hiding partial errors."""
+    if not isinstance(result, dict):
+        raise InvalidBackupResult('Backup handler must return a result dictionary')
+
+    normalized = dict(result)
+    for field in ('files_synced', 'size_synced'):
+        value = normalized.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise InvalidBackupResult(
+                f'Backup handler returned invalid {field}: expected non-negative integer'
+            )
+
+    logs = normalized.get('logs', '')
+    if not isinstance(logs, str):
+        raise InvalidBackupResult('Backup handler returned invalid logs: expected string')
+
+    raw_errors = normalized.get('errors', [])
+    if isinstance(raw_errors, str):
+        raw_errors = [raw_errors]
+    if not isinstance(raw_errors, list):
+        raise InvalidBackupResult('Backup handler returned invalid errors: expected list')
+
+    errors = [str(error).strip() for error in raw_errors if str(error).strip()]
+    for line in logs.splitlines():
+        stripped = line.strip()
+        if re.match(r'^ERROR(?:\s|:)', stripped, flags=re.IGNORECASE):
+            errors.append(stripped)
+
+    # Preserve order while avoiding the same message from explicit errors and logs.
+    errors = list(dict.fromkeys(errors))
+    status = normalized.get('status', 'completed')
+    if status not in ('completed', 'partial', 'failed'):
+        raise InvalidBackupResult(f'Backup handler returned invalid status: {status}')
+
+    if errors and status == 'completed':
+        has_artifacts = normalized['files_synced'] > 0 or normalized['size_synced'] > 0
+        status = 'partial' if has_artifacts else 'failed'
+    elif status in ('partial', 'failed') and not errors:
+        errors.append(f'Handler reported status {status} without an error message')
+
+    normalized['status'] = status
+    normalized['errors'] = errors
+    normalized['logs'] = logs
+    return normalized
 
 
 class BackupHandler(ABC):
@@ -41,7 +93,9 @@ class BackupHandler(ABC):
             dict: {
                 'files_synced': int,
                 'size_synced': int,
-                'logs': str
+                'logs': str,
+                'status': 'completed' | 'partial' | 'failed' (optional),
+                'errors': list[str] (optional)
             }
         """
         pass

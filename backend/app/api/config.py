@@ -1,56 +1,74 @@
 """
 Configuration Export/Import API Endpoints
 """
-from flask import Blueprint, request, jsonify, send_file
-from datetime import datetime
+from flask import Blueprint, current_app, request, jsonify, send_file
 import json
 import os
 import tempfile
 
-from app.api.auth import token_required
-from app.api.sources import load_sources, save_sources
+from app.api.auth import admin_required
+from app.source_config import (
+    load_sources,
+    redact_source_secrets,
+    save_sources,
+    strip_redaction_markers,
+)
+from app.backup.paths import validate_source_id
 from app.config import Config
+from app.time_utils import utc_iso_z, utc_now_naive
+from app.runtime_settings import backup_root_path, get_setting
 
 config_bp = Blueprint('config', __name__)
 
 
-def _redact_sensitive_values(value):
-    """Recursively redact secret-like fields from exported config."""
-    if isinstance(value, dict):
-        redacted = {}
-        for key, item in value.items():
-            key_lower = key.lower()
-            if key_lower.endswith('_env'):
-                redacted[key] = item
-            elif any(secret in key_lower for secret in ('token', 'password', 'secret', 'key')):
-                redacted[key] = '***REDACTED***' if item else item
-            else:
-                redacted[key] = _redact_sensitive_values(item)
-        return redacted
-    if isinstance(value, list):
-        return [_redact_sensitive_values(item) for item in value]
-    return value
+def _validate_import_sources(sources):
+    """Validate source records before any imported configuration is written."""
+    errors = []
+    seen_ids = set()
+    for index, source in enumerate(sources):
+        if not isinstance(source, dict):
+            errors.append(f'Source {index} is not an object')
+            continue
+        if not source.get('name'):
+            errors.append(f'Source {index} missing name')
+        if not source.get('type'):
+            errors.append(f'Source {index} missing type')
+        try:
+            source_id = validate_source_id(source.get('id'))
+        except ValueError as e:
+            errors.append(f'Source {index}: {e}')
+            continue
+        if source_id in seen_ids:
+            errors.append(f'Duplicate source ID: {source_id}')
+        seen_ids.add(source_id)
+    return errors
 
 
 @config_bp.route('/export', methods=['GET'])
-@token_required
+@admin_required
 def export_config(current_user):
     """Export all configuration as JSON"""
     try:
         # Load sources and strip credentials
-        sources = _redact_sensitive_values(load_sources())
+        sources = redact_source_secrets(load_sources())
 
         # Get system settings
         settings = {
-            'backup_base_path': Config.BACKUP_BASE_PATH,
-            'max_parallel_tasks': Config.MAX_PARALLEL_TASKS,
-            'log_retention_days': Config.LOG_RETENTION_DAYS,
+            'backup_base_path': backup_root_path(),
+            'max_parallel_tasks': int(get_setting(
+                'max_parallel_tasks', Config.MAX_PARALLEL_TASKS
+            )),
+            'log_retention_days': int(get_setting(
+                'log_retention_days', Config.LOG_RETENTION_DAYS
+            )),
+            'backup_retention_count': int(get_setting('backup_retention_count', 10)),
+            'auto_cleanup': str(get_setting('auto_cleanup', 'true')).lower() == 'true',
         }
 
         # Create export data
         export_data = {
             'version': '1.0',
-            'exported_at': datetime.utcnow().isoformat() + 'Z',
+            'exported_at': utc_iso_z(),
             'sources': sources,
             'settings': settings,
             'metadata': {
@@ -72,7 +90,7 @@ def export_config(current_user):
         temp_file.close()
 
         # Generate filename with timestamp
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        timestamp = utc_now_naive().strftime('%Y%m%d_%H%M%S')
         filename = f'backupgenie_config_{timestamp}.json'
 
         # Send file and schedule cleanup
@@ -98,7 +116,7 @@ def export_config(current_user):
 
 
 @config_bp.route('/import', methods=['POST'])
-@token_required
+@admin_required
 def import_config(current_user):
     """Import configuration from JSON"""
     try:
@@ -121,31 +139,58 @@ def import_config(current_user):
         # Get import options from query params
         merge = request.args.get('merge', 'false').lower() == 'true'
 
-        # Import sources
+        from app import db
+        from app.api.settings import (
+            apply_runtime_settings,
+            normalize_settings,
+            stage_settings,
+        )
+
+        existing_sources = load_sources()
+        final_sources = existing_sources
         imported_sources = 0
-        if 'sources' in data and isinstance(data['sources'], list):
+        if 'sources' in data:
+            if not isinstance(data['sources'], list):
+                return jsonify({'error': 'Sources must be an array'}), 400
+            imported_source_data = strip_redaction_markers(data['sources'])
+            source_errors = _validate_import_sources(imported_source_data)
+            if source_errors:
+                return jsonify({'error': 'Invalid sources', 'details': source_errors}), 400
             if merge:
-                # Merge with existing sources
-                existing_sources = load_sources()
-                existing_ids = {s.get('id') for s in existing_sources}
-
-                for source in data['sources']:
+                final_sources = list(existing_sources)
+                existing_ids = {source.get('id') for source in final_sources}
+                for source in imported_source_data:
                     if source.get('id') not in existing_ids:
-                        existing_sources.append(source)
+                        final_sources.append(source)
                         imported_sources += 1
-
-                save_sources(existing_sources)
             else:
-                # Replace all sources
-                save_sources(data['sources'])
-                imported_sources = len(data['sources'])
+                final_sources = imported_source_data
+                imported_sources = len(imported_source_data)
 
-        # Import settings (if provided)
-        # Note: For now, we just validate them since Config uses environment variables
-        # In the future, this could write to a persistent settings file
-        imported_settings = 0
-        if 'settings' in data and isinstance(data['settings'], dict):
-            imported_settings = len(data['settings'])
+        try:
+            normalized_settings = normalize_settings(data.get('settings', {}))
+        except ValueError as exc:
+            return jsonify({'error': str(exc)}), 400
+
+        sources_changed = final_sources != existing_sources
+        try:
+            stage_settings(normalized_settings)
+            if sources_changed:
+                save_sources(final_sources)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            if sources_changed:
+                try:
+                    save_sources(existing_sources)
+                except Exception:
+                    current_app.logger.critical(
+                        'Could not restore source configuration after import failure'
+                    )
+            raise
+
+        apply_runtime_settings(normalized_settings)
+        imported_settings = len(normalized_settings)
 
         return jsonify({
             'message': 'Configuration imported successfully',
@@ -153,19 +198,20 @@ def import_config(current_user):
                 'sources_imported': imported_sources,
                 'settings_imported': imported_settings,
                 'merge_mode': merge,
-                'imported_at': datetime.utcnow().isoformat() + 'Z',
+                'imported_at': utc_iso_z(),
                 'imported_by': current_user.username
             }
         }), 200
 
     except json.JSONDecodeError:
         return jsonify({'error': 'Invalid JSON format'}), 400
-    except Exception as e:
-        return jsonify({'error': f'Import failed: {str(e)}'}), 500
+    except Exception:
+        current_app.logger.exception('Configuration import failed')
+        return jsonify({'error': 'Import failed'}), 500
 
 
 @config_bp.route('/validate', methods=['POST'])
-@token_required
+@admin_required
 def validate_config(current_user):
     """Validate configuration file without importing"""
     try:
@@ -194,8 +240,10 @@ def validate_config(current_user):
                         continue
 
                     # Check required fields
-                    if 'id' not in source:
-                        warnings.append(f'Source {i} missing ID (will be auto-generated)')
+                    try:
+                        validate_source_id(source.get('id'))
+                    except ValueError as e:
+                        errors.append(f'Source {i}: {e}')
                     if 'name' not in source:
                         errors.append(f'Source {i} missing name')
                     if 'type' not in source:
@@ -205,6 +253,12 @@ def validate_config(current_user):
         if 'settings' in data:
             if not isinstance(data['settings'], dict):
                 errors.append('Settings must be an object')
+            else:
+                from app.api.settings import normalize_settings
+                try:
+                    normalize_settings(data['settings'])
+                except ValueError as exc:
+                    errors.append(str(exc))
 
         # Check for duplicate source IDs
         if 'sources' in data and isinstance(data['sources'], list):
@@ -231,9 +285,10 @@ def validate_config(current_user):
             'errors': ['Invalid JSON format'],
             'warnings': []
         }), 400
-    except Exception as e:
+    except Exception:
+        current_app.logger.exception('Configuration validation failed')
         return jsonify({
             'valid': False,
-            'errors': [f'Validation failed: {str(e)}'],
+            'errors': ['Validation failed'],
             'warnings': []
         }), 500

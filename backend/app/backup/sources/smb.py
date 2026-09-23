@@ -6,30 +6,34 @@ lazy unmount fallback, consistent logging
 import subprocess
 import logging
 import os
+import re
+import tarfile
+import tempfile
+from datetime import datetime
 from app.backup.base import BackupHandler
 
 logger = logging.getLogger(__name__)
 
 
 class SMBBackup(BackupHandler):
-    """Handles SMB/CIFS and NFS backups using mount and rsync"""
+    """Handles SMB through smbclient and NFS through mount/rsync."""
 
     def __init__(self, source_config, dest_path):
         super().__init__(source_config, dest_path)
-        self.mount_point = f"/tmp/mount_{source_config.get('id', 'unknown')}"
+        self.mount_point = None
 
     def backup(self):
         """Execute SMB/NFS backup"""
+        if self.source_config.get('type') != 'nfs':
+            return self._backup_smb_archive()
+
         try:
-            # Create mount point
-            os.makedirs(self.mount_point, exist_ok=True)
+            # A private, unpredictable directory avoids shared /tmp races.
+            self.mount_point = tempfile.mkdtemp(prefix='backupgenie-nfs-')
             self.log(f"Created mount point: {self.mount_point}")
 
-            # Mount the share
-            if self.source_config.get('type') == 'nfs':
-                self._mount_nfs()
-            else:
-                self._mount_smb()
+            # NFS still requires a kernel mount in the container.
+            self._mount_nfs()
 
             self.log(f"Mounted {self.source_config.get('source', 'unknown')}")
 
@@ -55,49 +59,127 @@ class SMBBackup(BackupHandler):
                 pass
             raise
 
-    def _mount_smb(self):
-        """Mount SMB share with protocol version auto-detection"""
+    def _backup_smb_archive(self):
+        """Back up SMB through smbclient without privileged kernel mounts."""
+        source, username, password, remote_path, options = self._smb_parameters()
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        archive = os.path.join(self.dest_path, f'smb_{timestamp}.tar')
+        command, process_env = self._smbclient_command(
+            source,
+            username,
+            password,
+            remote_path,
+            ['-Tc', '-'],
+            encrypt_transport=options.get('encrypt_transport', False),
+        )
+
+        self.log(f'Starting SMB backup from {source}')
+        try:
+            with open(archive, 'wb') as archive_file:
+                result = subprocess.run(
+                    command,
+                    stdout=archive_file,
+                    stderr=subprocess.PIPE,
+                    env=process_env,
+                    timeout=int(options.get('timeout', 3600)),
+                )
+            if result.returncode != 0:
+                message = result.stderr.decode('utf-8', errors='replace')[:500]
+                raise Exception(
+                    f'smbclient failed with code {result.returncode}: {message}'
+                )
+
+            with tarfile.open(archive, 'r:') as tar:
+                files = sum(member.isfile() for member in tar.getmembers())
+            size = os.path.getsize(archive)
+            self.log(f'SMB backup completed: {files} files, {size} bytes')
+            return {
+                'files_synced': files,
+                'size_synced': size,
+                'logs': self.get_logs(),
+            }
+        except Exception:
+            if os.path.exists(archive):
+                os.unlink(archive)
+            self.log('ERROR: SMB backup failed')
+            raise
+
+    def test_connection(self):
+        """Verify SMB authentication and read access without writing remotely."""
+        source, username, password, remote_path, options = self._smb_parameters()
+        command, process_env = self._smbclient_command(
+            source,
+            username,
+            password,
+            remote_path,
+            ['-c', 'ls'],
+            encrypt_transport=options.get('encrypt_transport', False),
+        )
+        result = subprocess.run(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            env=process_env,
+            timeout=15,
+        )
+        if result.returncode != 0:
+            raise Exception('SMB authentication or share access failed')
+        return True
+
+    def _smb_parameters(self):
+        """Resolve and validate the SMB connection contract once."""
         credentials = self.source_config.get('credentials', {})
         username = self.source_config.get('username') or credentials.get('username', '')
-        password = self.source_config.get('password', '')
-        if not password:
-            password_env = credentials.get('password_env', '')
-            password = os.environ.get(password_env, '') if password_env else ''
-        if not password:
-            password = self._get_env_credential('NAS_PASSWORD_1', required=False)
-        options = self.source_config.get('options', {})
+        password = self._get_config_credential(
+            'password', 'NAS_PASSWORD_1', required=False
+        )
+
         source = self.source_config.get('source')
-        if not source:
-            host = self.source_config.get('host', '')
-            share = str(self.source_config.get('share', '')).strip('/')
-            if host and share:
-                source = f"//{host}/{share}"
-        if not source:
-            raise Exception("SMB source missing. Configure source or host/share.")
+        host = self.source_config.get('host', '')
+        share = str(self.source_config.get('share', '')).strip('/')
+        if not source and host and share:
+            source = f'//{host}/{share}'
+        match = re.fullmatch(r'//([A-Za-z0-9_.:-]{1,253})/([^/\\\0\r\n]+)', source or '')
+        if not match:
+            raise Exception('Invalid SMB source; expected //host/share')
+        if username and not re.fullmatch(r'[A-Za-z0-9_.@\\/-]{1,128}', username):
+            raise Exception('Invalid SMB username')
 
-        # Try SMB protocol versions in order: 3.1.1 → 3.0 → 2.1
-        smb_versions = options.get('smb_versions', ['3.1.1', '3.0', '2.1'])
-        if isinstance(smb_versions, str):
-            smb_versions = [smb_versions]
+        options = self.source_config.get('options', {})
+        remote_path = str(self.source_config.get('path', '')).strip('/')
+        if any(character in remote_path for character in ('\0', '\r', '\n')):
+            raise Exception('Invalid SMB path')
 
-        last_error = None
-        for vers in smb_versions:
-            cmd = [
-                'mount',
-                '-t', 'cifs',
-                source,
-                self.mount_point,
-                '-o', f'username={username},password={password},vers={vers},sec=ntlmssp'
-            ]
+        return source, username, password, remote_path, options
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if result.returncode == 0:
-                self.log(f"SMB mounted with vers={vers}")
-                return
-            last_error = result.stderr
-            self.log(f"SMB mount failed with vers={vers}: {result.stderr.strip()}")
+    @staticmethod
+    def _smbclient_command(
+        source,
+        username,
+        password,
+        remote_path,
+        operation,
+        *,
+        encrypt_transport=False,
+    ):
+        """Build a non-interactive command without placing secrets in argv."""
+        command = ['smbclient', source, '-d', '0', '-E']
+        if username:
+            command.extend(['-U', username])
+        if remote_path:
+            command.extend(['-D', remote_path])
+        protection = 'encrypt' if encrypt_transport else 'sign'
+        command.append(f'--client-protection={protection}')
+        if not password:
+            command.append('-N')
+        command.extend(operation)
 
-        raise Exception(f"SMB mount failed with all protocol versions: {last_error}")
+        process_env = os.environ.copy()
+        if password:
+            process_env['PASSWD'] = password
+
+        return command, process_env
 
     def _mount_nfs(self):
         """Mount NFS share"""
@@ -162,6 +244,9 @@ class SMBBackup(BackupHandler):
         if result.stderr:
             self.log(result.stderr)
 
+        if result.returncode != 0:
+            raise Exception(f"rsync failed with code {result.returncode}: {result.stderr[:500]}")
+
         # Parse rsync stats
         files_synced = 0
         size_synced = 0
@@ -186,6 +271,8 @@ class SMBBackup(BackupHandler):
 
     def _unmount(self):
         """Unmount the share with lazy fallback"""
+        if not self.mount_point:
+            return
         result = subprocess.run(['umount', self.mount_point], capture_output=True)
         if result.returncode != 0:
             # Lazy unmount as fallback for busy mount points

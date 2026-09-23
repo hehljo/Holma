@@ -54,9 +54,12 @@ class GitHubBackup(GitMirrorArchiveMixin, BackupHandler):
                 self.log(f"Discovered {len(repo_names)} repos to back up")
                 return repo_names
             except Exception as e:
-                self.log(f"ERROR: Discovery failed: {e} - falling back to manual list")
+                manual_repositories = self._as_list(self.source_config.get('repositories'))
+                if not manual_repositories:
+                    raise Exception(f"GitHub discovery failed and no manual fallback exists: {e}")
+                self.log(f"WARNING: Discovery failed: {e} - using manual list")
                 logger.error(f"GitHub discovery failed: {e}")
-                return self.source_config.get('repositories', [])
+                return manual_repositories
         else:
             # Manual mode: use explicitly listed repos
             return self.source_config.get('repositories', [])
@@ -81,6 +84,9 @@ class GitHubBackup(GitMirrorArchiveMixin, BackupHandler):
             raise Exception("GitHub token not configured. Set it in Settings → Credentials or as GITHUB_TOKEN env var.")
 
         repositories = self._resolve_repositories(token)
+        repositories = self._as_list(repositories)
+        if not repositories:
+            raise Exception("No GitHub repositories configured or discovered")
         files_synced = 0
         size_synced = 0
         options = self.source_config.get('options', {})
@@ -98,7 +104,7 @@ class GitHubBackup(GitMirrorArchiveMixin, BackupHandler):
                 self._migrate_legacy_mirror(repo_dir, repo_path)
 
                 repo_url = f"https://github.com/{repo}.git"
-                auth_header = self._auth_header(token)
+                git_env = self._auth_env(token)
 
                 if os.path.exists(repo_path):
                     # Mirror exists, update all refs
@@ -107,25 +113,29 @@ class GitHubBackup(GitMirrorArchiveMixin, BackupHandler):
                         ['git', '-C', repo_path, 'remote', 'set-url', 'origin', repo_url],
                         capture_output=True,
                         text=True,
-                        timeout=30
+                        timeout=30,
+                        check=True,
                     )
                     result = self._run_with_retry(
-                        ['git', '-c', auth_header, '-C', repo_path, 'remote', 'update', '--prune'],
-                        retries=3
+                        ['git', '-C', repo_path, 'remote', 'update', '--prune'],
+                        retries=3,
+                        env=git_env,
                     )
                 else:
                     # Create new mirror clone (captures all refs, tags, branches)
                     self.log(f"Creating mirror clone for: {repo}")
                     result = self._run_with_retry(
-                        ['git', '-c', auth_header, 'clone', '--mirror', repo_url, repo_path],
-                        retries=3
+                        ['git', 'clone', '--mirror', repo_url, repo_path],
+                        retries=3,
+                        env=git_env,
                     )
                     if result.returncode == 0:
                         subprocess.run(
                             ['git', '-C', repo_path, 'remote', 'set-url', 'origin', repo_url],
                             capture_output=True,
                             text=True,
-                            timeout=30
+                            timeout=30,
+                            check=True,
                         )
 
                 if result.stdout:
@@ -134,10 +144,7 @@ class GitHubBackup(GitMirrorArchiveMixin, BackupHandler):
                     self.log(self._redact_token(result.stderr, token))
 
                 if result.returncode != 0:
-                    self.log(f"ERROR: git command returned code {result.returncode}")
-                    continue
-
-                files_synced += 1
+                    raise Exception(f"git command returned code {result.returncode}")
 
                 # Backup wiki if configured
                 if options.get('include_wikis', False):
@@ -147,17 +154,22 @@ class GitHubBackup(GitMirrorArchiveMixin, BackupHandler):
                     try:
                         if os.path.exists(wiki_path):
                             subprocess.run(
-                                ['git', '-c', auth_header, '-C', wiki_path, 'remote', 'update', '--prune'],
-                                capture_output=True, text=True, timeout=120
+                                ['git', '-C', wiki_path, 'remote', 'update', '--prune'],
+                                capture_output=True, text=True, timeout=120,
+                                env=git_env,
+                                check=True,
                             )
                         else:
                             subprocess.run(
-                                ['git', '-c', auth_header, 'clone', '--mirror', wiki_url, wiki_path],
-                                capture_output=True, text=True, timeout=120
+                                ['git', 'clone', '--mirror', wiki_url, wiki_path],
+                                capture_output=True, text=True, timeout=120,
+                                env=git_env,
+                                check=True,
                             )
                             subprocess.run(
                                 ['git', '-C', wiki_path, 'remote', 'set-url', 'origin', wiki_url],
-                                capture_output=True, text=True, timeout=30
+                                capture_output=True, text=True, timeout=30,
+                                check=True,
                             )
                         self.log(f"Wiki backed up for {repo}")
                     except Exception:
@@ -166,20 +178,23 @@ class GitHubBackup(GitMirrorArchiveMixin, BackupHandler):
                 # Handle LFS if configured
                 if options.get('include_lfs', False):
                     self.log(f"Fetching LFS objects for {repo}")
-                    subprocess.run(
+                    lfs_result = subprocess.run(
                         ['git', '-C', repo_path, 'lfs', 'fetch', '--all'],
-                        capture_output=True, timeout=600
+                        capture_output=True, timeout=600, env=git_env,
                     )
+                    if lfs_result.returncode != 0:
+                        raise Exception(f"Git LFS fetch failed for {repo}")
 
                 # One timestamped archive per repository. This is the artifact
                 # the retention cleanup rotates - the mirror itself is only the
                 # incremental working copy and stays outside versioning.
                 archive_size = self._archive_repository(repo, repo_dir, repo_path, timestamp)
                 size_synced += archive_size
+                files_synced += 1
 
             except Exception as e:
-                self.log(f"ERROR backing up {repo}: {str(e)}")
-                logger.error(f"Error backing up {repo}: {e}")
+                self.log(f"ERROR backing up {repo}: {type(e).__name__}")
+                logger.error("Error backing up %s: %s", repo, type(e).__name__)
 
         return {
             'files_synced': files_synced,
@@ -194,12 +209,12 @@ class GitHubBackup(GitMirrorArchiveMixin, BackupHandler):
         redacted = text.replace(token, '***REDACTED***')
         return re.sub(r'https://[^@\s]+@github\.com/', 'https://***REDACTED***@github.com/', redacted)
 
-    def _run_with_retry(self, cmd, retries=3, timeout=300):
+    def _run_with_retry(self, cmd, retries=3, timeout=300, env=None):
         """Run command with exponential backoff retry"""
         last_result = None
         for attempt in range(retries):
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout
+                cmd, capture_output=True, text=True, timeout=timeout, env=env
             )
             if result.returncode == 0:
                 return result
@@ -210,6 +225,13 @@ class GitHubBackup(GitMirrorArchiveMixin, BackupHandler):
                 time.sleep(wait_time)
         return last_result
 
-    def _auth_header(self, token):
+    def _auth_env(self, token):
         encoded = base64.b64encode(f"x-access-token:{token}".encode('utf-8')).decode('ascii')
-        return f"http.https://github.com/.extraheader=AUTHORIZATION: basic {encoded}"
+        env = os.environ.copy()
+        env.update({
+            'GIT_TERMINAL_PROMPT': '0',
+            'GIT_CONFIG_COUNT': '1',
+            'GIT_CONFIG_KEY_0': 'http.https://github.com/.extraheader',
+            'GIT_CONFIG_VALUE_0': f'AUTHORIZATION: basic {encoded}',
+        })
+        return env

@@ -1,43 +1,13 @@
 import { useTranslation } from 'react-i18next'
 import { Clock } from 'lucide-react'
-
-export const DEFAULT_SCHEDULE = {
-  enabled: false,
-  trigger: 'cron',
-  frequency: 'daily',
-  time: '03:00',
-  minute: 0,
-  weekday: 0,
-  day: 1,
-}
+import PropTypes from 'prop-types'
+import { DEFAULT_SCHEDULE } from './schedule'
 
 const FREQUENCIES = ['hourly', 'daily', 'weekly', 'monthly']
 
 const WEEKDAY_KEYS = [
   'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
 ]
-
-/**
- * Human-readable one-liner for a schedule, e.g. "Täglich um 03:00".
- * `t` is the i18next translate function from the calling component.
- */
-export function describeSchedule(schedule, t) {
-  const value = { ...DEFAULT_SCHEDULE, ...(schedule || {}) }
-  if (!value.enabled) return t('schedule.never')
-
-  const frequency = t(`schedule.${value.frequency}`)
-  if (value.frequency === 'hourly') {
-    return `${frequency} — :${String(value.minute).padStart(2, '0')}`
-  }
-  if (value.frequency === 'weekly') {
-    const weekday = t(`schedule.${WEEKDAY_KEYS[value.weekday] || 'monday'}`)
-    return `${frequency} — ${weekday}, ${value.time}`
-  }
-  if (value.frequency === 'monthly') {
-    return `${frequency} — ${value.day}. / ${value.time}`
-  }
-  return `${frequency} — ${value.time}`
-}
 
 /**
  * Schedule editor shared by the source modal and the global default in settings.
@@ -163,4 +133,17 @@ export default function ScheduleFields({ value, onChange, disabled = false }) {
       )}
     </div>
   )
+}
+
+ScheduleFields.propTypes = {
+  value: PropTypes.shape({
+    enabled: PropTypes.bool,
+    frequency: PropTypes.string,
+    time: PropTypes.string,
+    minute: PropTypes.number,
+    weekday: PropTypes.number,
+    day: PropTypes.number,
+  }),
+  onChange: PropTypes.func.isRequired,
+  disabled: PropTypes.bool,
 }

@@ -2,14 +2,12 @@
 Sources API Endpoints
 """
 from flask import Blueprint, request, jsonify
-import json
 import logging
-import os
 import requests
 
-from app.api.auth import token_required
+from app.api.auth import admin_required
 from app import limiter
-from app.config import Config
+from app.backup.paths import validate_source_id
 from app.scheduler.schedule import (
     describe_schedule,
     get_default_schedule,
@@ -19,45 +17,33 @@ from app.scheduler.schedule import (
     validate_schedule,
 )
 from app.services.github_discovery import discover_all
+from app.source_config import (
+    load_sources,
+    merge_preserving_redacted,
+    redact_source_secrets,
+    save_sources,
+)
+from app.postgres_utils import safe_postgres_command
+from app.runtime_settings import backup_root_path
 
 logger = logging.getLogger(__name__)
 
 sources_bp = Blueprint('sources', __name__)
 
 
-def load_sources():
-    """Load sources from configuration file"""
-    try:
-        with open(Config.SOURCES_CONFIG_PATH, 'r') as f:
-            config = json.load(f)
-            return config.get('backup_sources', [])
-    except FileNotFoundError:
-        return []
-    except json.JSONDecodeError:
-        return []
-
-
-def save_sources(sources):
-    """Save sources to configuration file"""
-    config = {'backup_sources': sources}
-    os.makedirs(os.path.dirname(Config.SOURCES_CONFIG_PATH), exist_ok=True)
-    with open(Config.SOURCES_CONFIG_PATH, 'w') as f:
-        json.dump(config, f, indent=2)
-
-
 @sources_bp.route('', methods=['GET'])
-@token_required
+@admin_required
 def get_sources(current_user):
     """Get all backup sources"""
-    sources = load_sources()
+    sources = load_sources(redact=True)
     return jsonify({'sources': sources}), 200
 
 
 @sources_bp.route('/<source_id>', methods=['GET'])
-@token_required
+@admin_required
 def get_source(current_user, source_id):
     """Get a specific source"""
-    sources = load_sources()
+    sources = load_sources(redact=True)
     source = next((s for s in sources if s.get('id') == source_id), None)
 
     if not source:
@@ -67,12 +53,12 @@ def get_source(current_user, source_id):
 
 
 @sources_bp.route('', methods=['POST'])
-@token_required
+@admin_required
 def create_source(current_user):
     """Create a new backup source"""
     data = request.get_json()
 
-    if not data or not data.get('name') or not data.get('type'):
+    if not isinstance(data, dict) or not data.get('name') or not data.get('type'):
         return jsonify({'error': 'Missing required fields: name, type'}), 400
 
     sources = load_sources()
@@ -81,6 +67,11 @@ def create_source(current_user):
     if not data.get('id'):
         import uuid
         data['id'] = f"{data['type']}-{str(uuid.uuid4())[:8]}"
+
+    try:
+        data['id'] = validate_source_id(data['id'])
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
     # Check for duplicate ID
     if any(s.get('id') == data['id'] for s in sources):
@@ -101,15 +92,22 @@ def create_source(current_user):
 
     return jsonify({
         'message': 'Source created successfully',
-        'source': data
+        'source': redact_source_secrets(data)
     }), 201
 
 
 @sources_bp.route('/<source_id>', methods=['PUT'])
-@token_required
+@admin_required
 def update_source(current_user, source_id):
     """Update a backup source"""
+    try:
+        validate_source_id(source_id)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
     data = request.get_json()
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Request body must be an object'}), 400
     sources = load_sources()
 
     source_index = next((i for i, s in enumerate(sources) if s.get('id') == source_id), None)
@@ -124,19 +122,19 @@ def update_source(current_user, source_id):
         data['schedule'] = schedule
 
     # Update source
-    sources[source_index].update(data)
+    sources[source_index] = merge_preserving_redacted(sources[source_index], data)
     sources[source_index]['id'] = source_id  # Ensure ID doesn't change
 
     save_sources(sources)
 
     return jsonify({
         'message': 'Source updated successfully',
-        'source': sources[source_index]
+        'source': redact_source_secrets(sources[source_index])
     }), 200
 
 
 @sources_bp.route('/<source_id>', methods=['DELETE'])
-@token_required
+@admin_required
 def delete_source(current_user, source_id):
     """Delete a backup source"""
     sources = load_sources()
@@ -170,7 +168,7 @@ def _github_error_message(response):
 
 
 @sources_bp.route('/schedules', methods=['GET'])
-@token_required
+@admin_required
 def get_schedules(current_user):
     """List the effective schedule and next run time for every source."""
     from datetime import datetime
@@ -199,7 +197,7 @@ def get_schedules(current_user):
 
 
 @sources_bp.route('/schedules/default', methods=['PUT'])
-@token_required
+@admin_required
 def update_default_schedule(current_user):
     """Update the global default schedule inherited by sources without one."""
     data = request.get_json() or {}
@@ -216,7 +214,7 @@ def update_default_schedule(current_user):
 
 
 @sources_bp.route('/github/discover', methods=['GET'])
-@token_required
+@admin_required
 @limiter.limit("5 per hour")
 def discover_github_repos(current_user):
     """Discover all GitHub repositories accessible with the configured token"""
@@ -249,7 +247,7 @@ def discover_github_repos(current_user):
 
 
 @sources_bp.route('/<source_id>/test', methods=['POST'])
-@token_required
+@admin_required
 def test_source(current_user, source_id):
     """Test connection to a backup source"""
     sources = load_sources()
@@ -284,28 +282,47 @@ def test_source(current_user, source_id):
                 'source_id': source_id
             }), 200
 
-        elif source_type == 'nas' or source_type == 'nfs':
-            # Test network share connectivity
-            host = source.get('config', {}).get('host', '')
-            if not host:
-                return jsonify({'error': 'Host not configured'}), 400
-
-            # Simple network connectivity test
-            import socket
+        elif source_type in ('nas', 'smb'):
+            # Validate authentication and read access, not only an open port.
             try:
-                socket.create_connection((host, 445 if source_type == 'nas' else 2049), timeout=5)
+                from app.backup.sources.smb import SMBBackup
+                SMBBackup(source, backup_root_path()).test_connection()
                 return jsonify({
                     'status': 'success',
-                    'message': f'Connection to {host} successful',
+                    'message': 'SMB share authentication and read access successful',
                     'source_id': source_id
                 }), 200
-            except (socket.timeout, socket.error) as e:
-                return jsonify({'error': f'Cannot connect to {host}: {str(e)}'}), 503
+            except Exception:
+                return jsonify({
+                    'error': 'SMB authentication or share access failed'
+                }), 503
+
+        elif source_type == 'portainer':
+            try:
+                from app.backup.sources.selfhosted import SelfHostedBackup
+                stack_count = SelfHostedBackup(
+                    source, backup_root_path()
+                ).test_connection()
+                return jsonify({
+                    'status': 'success',
+                    'message': f'Portainer API read access successful ({stack_count} stacks)',
+                    'source_id': source_id,
+                }), 200
+            except Exception:
+                return jsonify({'error': 'Portainer API access failed'}), 503
 
         elif source_type == 'github':
             # Test GitHub API access
-            token = source.get('config', {}).get('token', '')
-            repo = source.get('config', {}).get('repo', '')
+            config = source.get('config', {})
+            from app.api.settings import get_credential
+            token = (
+                config.get('token', '')
+                or source.get('token', '')
+                or get_credential(
+                    'github_token', profile=config.get('credential_profile')
+                )
+            )
+            repo = config.get('repo', '') or source.get('repo', '')
             if not token or not repo:
                 return jsonify({'error': 'Token or repository not configured'}), 400
 
@@ -327,19 +344,19 @@ def test_source(current_user, source_id):
                 return jsonify({'error': f'GitHub API error: {response.status_code}'}), 503
 
         else:
-            # For other source types, return informative message
+            # Unsupported tests must never look successful to the UI.
             return jsonify({
-                'status': 'info',
+                'status': 'unsupported',
                 'message': f'Connection test for {source_type} not yet implemented. Source will be tested during actual backup.',
                 'source_id': source_id
-            }), 200
+            }), 501
 
     except Exception as e:
         return jsonify({'error': f'Connection test failed: {str(e)}'}), 500
 
 
 @sources_bp.route('/supabase/test', methods=['POST'])
-@token_required
+@admin_required
 def test_supabase_connection(current_user):
     """Test Supabase database connection. Connection String + Password come from credential profile."""
     import subprocess
@@ -389,9 +406,13 @@ def test_supabase_connection(current_user):
 
     # 3. Test connection
     try:
+        safe_connection, postgres_env = safe_postgres_command(connection_string)
         result = subprocess.run(
-            ['psql', connection_string, '-c', 'SELECT 1;'],
-            capture_output=True, text=True, timeout=15
+            ['psql', safe_connection, '-c', 'SELECT 1;'],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env=postgres_env,
         )
 
         if result.returncode == 0:
@@ -412,4 +433,3 @@ def test_supabase_connection(current_user):
         return jsonify({'error': 'Verbindung Timeout (15s) - prüfe den Connection String'}), 504
     except Exception as e:
         return jsonify({'error': f'Verbindungstest fehlgeschlagen: {str(e)}'}), 500
-

@@ -1,6 +1,7 @@
 import { AlertTriangle, X } from 'lucide-react'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
+import PropTypes from 'prop-types'
 
 /**
  * Confirmation Dialog Component
@@ -117,4 +118,16 @@ export default function ConfirmDialog({
       </div>
     </div>
   )
+}
+
+ConfirmDialog.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onConfirm: PropTypes.func.isRequired,
+  title: PropTypes.string,
+  message: PropTypes.string,
+  confirmText: PropTypes.string,
+  cancelText: PropTypes.string,
+  confirmVariant: PropTypes.oneOf(['danger', 'warning', 'primary']),
+  isLoading: PropTypes.bool,
 }

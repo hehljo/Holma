@@ -2,84 +2,61 @@
   "backup_sources": [
     {
       "id": "local-docs",
-      "name": "Local Documents",
+      "name": "Local documents",
       "type": "local",
-      "enabled": true,
+      "enabled": false,
       "priority": 1,
-      "sources": [
-        "/home/pi/documents",
-        "/home/pi/photos",
-        "/home/pi/projects"
-      ],
+      "sources": ["/data/example-source"],
       "options": {
-        "recursive": true,
         "delete": false,
         "follow_symlinks": false
-      },
-      "schedule": {
-        "trigger": "usb_mount",
-        "max_duration": 600
       }
     },
     {
       "id": "nas-smb",
-      "name": "NAS via SMB",
-      "type": "smb",
-      "enabled": true,
+      "name": "NAS through SMB",
+      "type": "nas",
+      "enabled": false,
       "priority": 2,
-      "source": "//192.168.1.100/backupshare",
-      "credentials": {
-        "username": "backup_user",
-        "password_env": "SMB_PASSWORD"
-      },
-      "options": {
-        "recursive": true,
-        "delete": true,
-        "timeout": 300
+      "config": {
+        "host": "diskstation",
+        "share": "backupgenie-test",
+        "path": "optional/subfolder",
+        "username": "backupgenie",
+        "credentials": {
+          "password_env": "SMB_PASSWORD"
+        },
+        "options": {
+          "encrypt_transport": false,
+          "timeout": 3600
+        }
       }
     },
     {
-      "id": "nas-nfs",
-      "name": "NAS via NFS",
-      "type": "nfs",
-      "enabled": true,
-      "priority": 3,
-      "source": "192.168.1.100:/exports/backup",
-      "options": {
-        "vers": 3,
-        "nolock": true
-      }
-    },
-    {
-      "id": "synology-nas",
-      "name": "Synology NAS via rsync",
+      "id": "nas-rsync",
+      "name": "NAS through rsync/SSH",
       "type": "rsync-ssh",
-      "enabled": true,
-      "priority": 4,
-      "host": "192.168.1.100",
-      "port": 22,
-      "path": "/volume1/backup",
-      "credentials": {
-        "username_env": "NAS_USER",
-        "ssh_key_path": "~/.ssh/id_rsa"
-      },
-      "options": {
-        "delete": false,
-        "compress": true,
-        "recursive": true,
-        "exclude": ["*.tmp", "*.log"]
+      "enabled": false,
+      "priority": 3,
+      "config": {
+        "host": "diskstation",
+        "port": 22,
+        "path": "/volume1/backupgenie-test",
+        "username": "backupgenie",
+        "ssh_key_path": "/run/secrets/backupgenie_ssh_key",
+        "options": {
+          "delete": false,
+          "strict_host_key_checking": true
+        }
       }
     },
     {
-      "id": "github-repos",
-      "name": "GitHub Repositories",
+      "id": "github-repositories",
+      "name": "GitHub repositories",
       "type": "github",
-      "enabled": true,
-      "priority": 5,
-      "repositories": [
-        "username/repo1",
-        "organization/repo2"
-      ],
+      "enabled": false,
+      "priority": 4,
+      "repositories": ["owner/repository"],
       "credentials": {
         "token_env": "GITHUB_TOKEN"
       },
@@ -90,857 +67,68 @@
       }
     },
     {
-      "id": "gitlab-repos",
-      "name": "GitLab Repositories",
-      "type": "gitlab",
-      "enabled": true,
-      "priority": 6,
-      "repositories": [
-        "username/project1",
-        "group/project2"
-      ],
-      "credentials": {
-        "token_env": "GITLAB_TOKEN"
-      },
-      "options": {
-        "include_lfs": true,
-        "include_wikis": true
-      }
-    },
-    {
-      "id": "gitea-selfhosted",
-      "name": "Gitea Self-Hosted",
-      "type": "gitea",
-      "enabled": true,
-      "priority": 7,
-      "host": "git.example.com",
-      "repositories": [
-        "user/repo1",
-        "user/repo2"
-      ],
-      "credentials": {
-        "token_env": "GITEA_TOKEN"
-      }
-    },
-    {
-      "id": "bitbucket-repos",
-      "name": "Bitbucket Repositories",
-      "type": "bitbucket",
-      "enabled": true,
-      "priority": 8,
-      "repositories": [
-        "workspace/repo1"
-      ],
-      "credentials": {
-        "token_env": "BITBUCKET_TOKEN"
-      }
-    },
-    {
-      "id": "codeberg-repos",
-      "name": "Codeberg Repositories",
-      "type": "codeberg",
-      "enabled": true,
-      "priority": 9,
-      "repositories": [
-        "username/project1"
-      ],
-      "credentials": {
-        "token_env": "CODEBERG_TOKEN"
-      }
-    },
-    {
-      "id": "mysql-db",
-      "name": "MySQL/MariaDB Database",
-      "type": "mysql",
-      "enabled": true,
-      "priority": 10,
-      "host": "localhost",
-      "port": 3306,
-      "databases": [
-        "production_db",
-        "analytics_db"
-      ],
-      "credentials": {
-        "username_env": "MYSQL_USER",
-        "password_env": "MYSQL_PASSWORD"
-      },
-      "options": {
-        "compress": true,
-        "gzip": true
-      }
-    },
-    {
-      "id": "postgresql-db",
-      "name": "PostgreSQL Database",
+      "id": "postgres-main",
+      "name": "PostgreSQL",
       "type": "postgresql",
-      "enabled": true,
-      "priority": 11,
-      "host": "localhost",
-      "port": 5432,
-      "databases": [
-        "app_database",
-        "metrics_db"
-      ],
-      "credentials": {
-        "username_env": "POSTGRES_USER",
-        "password_env": "POSTGRES_PASSWORD"
-      },
-      "options": {
-        "gzip": true,
-        "schema_only": false,
-        "data_only": false
+      "enabled": false,
+      "priority": 5,
+      "config": {
+        "host": "postgres",
+        "port": 5432,
+        "databases": ["app"],
+        "credentials": {
+          "username_env": "POSTGRES_USER",
+          "password_env": "POSTGRES_PASSWORD"
+        }
       }
     },
     {
-      "id": "mongodb-db",
-      "name": "MongoDB Database",
-      "type": "mongodb",
-      "enabled": true,
-      "priority": 12,
-      "host": "localhost",
-      "port": 27017,
-      "database": "myapp",
-      "credentials": {
-        "username_env": "MONGO_USER",
-        "password_env": "MONGO_PASSWORD"
-      },
-      "options": {
-        "gzip": true
-      }
-    },
-    {
-      "id": "redis-cache",
-      "name": "Redis Database",
-      "type": "redis",
-      "enabled": true,
-      "priority": 13,
-      "host": "localhost",
-      "port": 6379,
-      "credentials": {
-        "password_env": "REDIS_PASSWORD"
-      }
-    },
-    {
-      "id": "sqlite-dbs",
-      "name": "SQLite Databases",
-      "type": "sqlite",
-      "enabled": true,
-      "priority": 14,
-      "databases": [
-        "/var/lib/app/database.db",
-        "/home/pi/data/local.db"
-      ]
-    },
-    {
-      "id": "couchdb-db",
-      "name": "CouchDB Database",
-      "type": "couchdb",
-      "enabled": true,
-      "priority": 15,
-      "host": "localhost",
-      "port": 5984,
-      "databases": [
-        "app_data",
-        "user_profiles"
-      ],
-      "credentials": {
-        "username_env": "COUCHDB_USER",
-        "password_env": "COUCHDB_PASSWORD"
-      }
-    },
-    {
-      "id": "google-drive",
-      "name": "Google Drive",
-      "type": "rclone",
-      "enabled": true,
-      "priority": 16,
-      "remote": "gdrive",
-      "path": "/Backup",
-      "options": {
-        "transfers": 4,
-        "checkers": 8
-      }
-    },
-    {
-      "id": "dropbox",
-      "name": "Dropbox",
-      "type": "rclone",
-      "enabled": true,
-      "priority": 17,
-      "remote": "dropbox",
-      "path": "/Backups",
-      "options": {
-        "transfers": 4,
-        "checkers": 8
-      }
-    },
-    {
-      "id": "onedrive",
-      "name": "Microsoft OneDrive",
-      "type": "rclone",
-      "enabled": true,
-      "priority": 18,
-      "remote": "onedrive",
-      "path": "/Documents/Backup",
-      "options": {
-        "transfers": 4,
-        "checkers": 8
-      }
-    },
-    {
-      "id": "aws-s3",
-      "name": "AWS S3 Bucket",
-      "type": "rclone",
-      "enabled": true,
-      "priority": 19,
-      "remote": "s3",
-      "path": "/my-backup-bucket",
-      "options": {
-        "transfers": 8,
-        "checkers": 16
-      }
-    },
-    {
-      "id": "backblaze-b2",
-      "name": "Backblaze B2",
-      "type": "rclone",
-      "enabled": true,
-      "priority": 20,
-      "remote": "b2",
-      "path": "/my-backup-bucket",
-      "options": {
-        "transfers": 4,
-        "checkers": 8
-      }
-    },
-    {
-      "id": "nextcloud",
-      "name": "Nextcloud via WebDAV",
-      "type": "webdav",
-      "enabled": true,
-      "priority": 21,
-      "host": "cloud.example.com",
-      "path": "/remote.php/dav/files/username/Backup",
-      "https": true,
-      "vendor": "nextcloud",
-      "credentials": {
-        "username_env": "NEXTCLOUD_USER",
-        "password_env": "NEXTCLOUD_PASSWORD"
-      },
-      "options": {
-        "method": "rclone",
-        "transfers": 4,
-        "delete": false
-      }
-    },
-    {
-      "id": "ftp-server",
-      "name": "FTP Server",
-      "type": "ftp",
-      "enabled": true,
-      "priority": 22,
-      "host": "ftp.example.com",
-      "port": 21,
-      "path": "/backup",
-      "ftps": false,
-      "credentials": {
-        "username_env": "FTP_USER",
-        "password_env": "FTP_PASSWORD"
-      },
-      "options": {
-        "parallel": 2,
-        "delete": false,
-        "only_newer": true
-      }
-    },
-    {
-      "id": "sftp-server",
-      "name": "SFTP Server",
-      "type": "sftp",
-      "enabled": true,
-      "priority": 23,
-      "host": "sftp.example.com",
-      "port": 22,
-      "path": "/backup",
-      "credentials": {
-        "username_env": "SFTP_USER",
-        "ssh_key_path": "~/.ssh/id_rsa"
-      },
-      "options": {
-        "delete": false,
-        "compress": true
-      }
-    },
-    {
-      "id": "docker-volumes",
-      "name": "Docker Volumes",
+      "id": "docker-data",
+      "name": "Docker volume",
       "type": "docker-volume",
-      "enabled": true,
-      "priority": 24,
-      "volumes": [
-        "mysql_data",
-        "nginx_config",
-        "app_uploads"
-      ],
-      "containers": [
-        "web_app",
-        "database"
-      ],
-      "options": {
-        "export_filesystem": true,
-        "backup_config": true
+      "enabled": false,
+      "priority": 6,
+      "config": {
+        "volumes": ["myapp_data"],
+        "options": {
+          "stop_containers": false
+        }
       }
     },
     {
-      "id": "docker-images",
-      "name": "Docker Images",
-      "type": "docker-image",
-      "enabled": true,
-      "priority": 25,
-      "images": [
-        "nginx:latest",
-        "mysql:8.0",
-        "myapp:production"
-      ],
-      "options": {
-        "compress": true
-      }
-    },
-    {
-      "id": "plex-media",
-      "name": "Plex Media Server",
-      "type": "plex",
-      "enabled": true,
-      "priority": 26,
-      "host": "192.168.1.100",
-      "port": 32400,
-      "credentials": {
-        "token_env": "PLEX_TOKEN"
-      },
-      "options": {
-        "backup_database": true,
-        "backup_metadata": true,
-        "backup_library": false,
-        "backup_method": "docker-volume"
-      }
-    },
-    {
-      "id": "jellyfin-media",
-      "name": "Jellyfin Media Server",
-      "type": "jellyfin",
-      "enabled": true,
-      "priority": 27,
-      "host": "192.168.1.100",
-      "port": 8096,
-      "credentials": {
-        "api_key_env": "JELLYFIN_API_KEY"
-      },
-      "options": {
-        "backup_database": true,
-        "backup_metadata": true,
-        "backup_library": false,
-        "backup_method": "docker-volume"
-      }
-    },
-    {
-      "id": "immich-photos",
-      "name": "Immich Photo Management",
-      "type": "immich",
-      "enabled": true,
-      "priority": 28,
-      "host": "192.168.1.100",
-      "port": 3001,
-      "credentials": {
-        "api_key_env": "IMMICH_API_KEY"
-      },
-      "options": {
-        "backup_database": true,
-        "backup_upload_location": true,
-        "backup_method": "docker-volume"
-      }
-    },
-    {
-      "id": "seafile-files",
-      "name": "Seafile File Sync",
-      "type": "seafile",
-      "enabled": true,
-      "priority": 29,
-      "host": "192.168.1.100",
-      "port": 8000,
-      "credentials": {
-        "username_env": "SEAFILE_USER",
-        "password_env": "SEAFILE_PASSWORD"
-      },
-      "options": {
-        "backup_libraries": true,
-        "backup_database": true
-      }
-    },
-    {
-      "id": "homeassistant",
-      "name": "Home Assistant",
-      "type": "homeassistant",
-      "enabled": true,
-      "priority": 30,
-      "host": "192.168.1.100",
-      "port": 8123,
-      "credentials": {
-        "token_env": "HA_TOKEN"
-      },
-      "options": {
-        "backup_config": true,
-        "backup_database": true,
-        "backup_addons": true,
-        "use_snapshot_api": true
-      }
-    },
-    {
-      "id": "influxdb-timeseries",
-      "name": "InfluxDB Time-Series Database",
-      "type": "influxdb",
-      "enabled": true,
-      "priority": 31,
-      "host": "192.168.1.100",
-      "port": 8086,
-      "credentials": {
-        "username_env": "INFLUXDB_USER",
-        "password_env": "INFLUXDB_PASSWORD",
-        "token_env": "INFLUXDB_TOKEN"
-      },
-      "options": {
-        "backup_method": "influxd_backup",
-        "databases": ["sensors", "metrics"]
-      }
-    },
-    {
-      "id": "grafana-dashboards",
-      "name": "Grafana Dashboards",
-      "type": "grafana",
-      "enabled": true,
-      "priority": 32,
-      "host": "192.168.1.100",
-      "port": 3000,
-      "credentials": {
-        "token_env": "GRAFANA_TOKEN"
-      },
-      "options": {
-        "backup_dashboards": true,
-        "backup_database": true,
-        "backup_datasources": true,
-        "use_api": true
-      }
-    },
-    {
-      "id": "nodered-flows",
-      "name": "Node-RED Automation",
-      "type": "nodered",
-      "enabled": true,
-      "priority": 33,
-      "host": "192.168.1.100",
-      "port": 1880,
-      "credentials": {
-        "username_env": "NODERED_USER",
-        "password_env": "NODERED_PASSWORD"
-      },
-      "options": {
-        "backup_flows": true,
-        "backup_config": true,
-        "use_api": true
-      }
-    },
-    {
-      "id": "gitbucket-repos",
-      "name": "GitBucket Repositories",
-      "type": "gitbucket",
-      "enabled": true,
-      "priority": 34,
-      "host": "192.168.1.100",
-      "port": 8080,
-      "repositories": [
-        "user/repo1",
-        "user/repo2"
-      ],
-      "credentials": {
-        "token_env": "GITBUCKET_TOKEN"
-      },
-      "options": {
-        "include_lfs": true,
-        "include_issues": true
-      }
-    },
-    {
-      "id": "vaultwarden-passwords",
-      "name": "Vaultwarden Password Manager",
-      "type": "vaultwarden",
-      "enabled": true,
-      "priority": 35,
-      "host": "192.168.1.100",
-      "port": 80,
-      "options": {
-        "backup_database": true,
-        "backup_attachments": true,
-        "backup_method": "docker-volume",
-        "db_type": "sqlite"
-      }
-    },
-    {
-      "id": "bitwarden-selfhosted",
-      "name": "Bitwarden Self-Hosted",
-      "type": "bitwarden",
-      "enabled": true,
-      "priority": 36,
-      "host": "192.168.1.100",
-      "port": 80,
-      "credentials": {
-        "admin_token_env": "BITWARDEN_ADMIN_TOKEN"
-      },
-      "options": {
-        "backup_database": true,
-        "backup_attachments": true,
-        "use_backup_script": true
-      }
-    },
-    {
-      "id": "mediawiki",
-      "name": "MediaWiki",
-      "type": "mediawiki",
-      "enabled": true,
-      "priority": 37,
-      "host": "192.168.1.100",
-      "port": 80,
-      "options": {
-        "backup_database": true,
-        "backup_images": true,
-        "backup_path": "/var/www/wiki"
-      }
-    },
-    {
-      "id": "tiddlywiki",
-      "name": "TiddlyWiki Personal Wiki",
-      "type": "tiddlywiki",
-      "enabled": true,
-      "priority": 38,
-      "host": "192.168.1.100",
-      "port": 8080,
-      "options": {
-        "backup_method": "json_export",
-        "backup_plugins": true
-      }
-    },
-    {
-      "id": "obsidian-vault",
-      "name": "Obsidian Sync Alternative",
-      "type": "obsidian",
-      "enabled": true,
-      "priority": 39,
-      "host": "192.168.1.100",
-      "port": 8000,
-      "options": {
-        "backup_method": "rsync",
-        "vault_path": "/data/obsidian"
-      }
-    },
-    {
-      "id": "prometheus-metrics",
-      "name": "Prometheus Metrics",
-      "type": "prometheus",
-      "enabled": true,
-      "priority": 40,
-      "host": "192.168.1.100",
-      "port": 9090,
-      "options": {
-        "backup_method": "tsdb_snapshot",
-        "backup_config": true
-      }
-    },
-    {
-      "id": "grafana-loki-logs",
-      "name": "Grafana Loki Logs",
-      "type": "loki",
-      "enabled": true,
-      "priority": 41,
-      "host": "192.168.1.100",
-      "port": 3100,
-      "options": {
-        "backup_method": "docker-volume",
-        "backup_config": true
-      }
-    },
-    {
-      "id": "sentry-errors",
-      "name": "Sentry Error Tracking",
-      "type": "sentry",
-      "enabled": true,
-      "priority": 42,
-      "host": "192.168.1.100",
-      "port": 9000,
-      "credentials": {
-        "auth_token_env": "SENTRY_AUTH_TOKEN"
-      },
-      "options": {
-        "backup_database": true,
-        "backup_attachments": true
-      }
-    },
-    {
-      "id": "mailcow-email",
-      "name": "Mailcow Mail Server",
-      "type": "mailcow",
-      "enabled": true,
-      "priority": 43,
-      "host": "192.168.1.100",
-      "port": 443,
-      "credentials": {
-        "api_key_env": "MAILCOW_API_KEY"
-      },
-      "options": {
-        "backup_maildir": true,
-        "backup_database": true,
-        "backup_config": true
-      }
-    },
-    {
-      "id": "mastodon-social",
-      "name": "Mastodon Social Network",
-      "type": "mastodon",
-      "enabled": true,
-      "priority": 44,
-      "host": "192.168.1.100",
-      "port": 3000,
-      "credentials": {
-        "access_token_env": "MASTODON_TOKEN"
-      },
-      "options": {
-        "backup_database": true,
-        "backup_media": true,
-        "use_streaming_api": true
-      }
-    },
-    {
-      "id": "mattermost-chat",
-      "name": "Mattermost Team Chat",
-      "type": "mattermost",
-      "enabled": true,
-      "priority": 45,
-      "host": "192.168.1.100",
-      "port": 8065,
-      "credentials": {
-        "token_env": "MATTERMOST_TOKEN"
-      },
-      "options": {
-        "backup_database": true,
-        "backup_files": true,
-        "use_mmctl": true
-      }
-    },
-    {
-      "id": "paperless-ngx-docs",
-      "name": "Paperless-NGX Documents",
-      "type": "paperless-ngx",
-      "enabled": true,
-      "priority": 46,
-      "host": "192.168.1.100",
-      "port": 8000,
-      "credentials": {
-        "token_env": "PAPERLESS_TOKEN"
-      },
-      "options": {
-        "backup_documents": true,
-        "backup_database": true,
-        "backup_media": true,
-        "use_exporter": true
-      }
-    },
-    {
-      "id": "archivebox-web",
-      "name": "ArchiveBox Web Archive",
-      "type": "archivebox",
-      "enabled": true,
-      "priority": 47,
-      "host": "192.168.1.100",
-      "port": 5000,
-      "options": {
-        "backup_method": "snapshot_api",
-        "backup_data": true
-      }
-    },
-    {
-      "id": "wallabag-articles",
-      "name": "Wallabag Read Later",
-      "type": "wallabag",
-      "enabled": true,
-      "priority": 48,
-      "host": "192.168.1.100",
-      "port": 80,
-      "credentials": {
-        "client_id_env": "WALLABAG_CLIENT_ID",
-        "client_secret_env": "WALLABAG_CLIENT_SECRET",
-        "username_env": "WALLABAG_USER",
-        "password_env": "WALLABAG_PASSWORD"
-      },
-      "options": {
-        "backup_database": true,
-        "use_json_export": true
-      }
-    },
-    {
-      "id": "linkding-bookmarks",
-      "name": "Linkding Bookmark Manager",
-      "type": "linkding",
-      "enabled": true,
-      "priority": 49,
-      "host": "192.168.1.100",
-      "port": 9090,
-      "credentials": {
-        "token_env": "LINKDING_TOKEN"
-      },
-      "options": {
-        "backup_method": "json_export",
-        "backup_database": true
-      }
-    },
-    {
-      "id": "kaleidescape-media",
-      "name": "Kaleidescape Movie Collection",
-      "type": "kaleidescape",
-      "enabled": true,
-      "priority": 50,
-      "host": "192.168.1.100",
-      "port": 3006,
-      "options": {
-        "backup_method": "xml_api",
-        "backup_metadata": true
-      }
-    },
-    {
-      "id": "musicbrainz-picard",
-      "name": "MusicBrainz Picard Music Tagger",
-      "type": "musicbrainz",
-      "enabled": true,
-      "priority": 51,
-      "host": "192.168.1.100",
-      "port": 8086,
-      "options": {
-        "backup_database": true,
-        "backup_method": "docker-volume"
-      }
-    },
-    {
-      "id": "portainer-docker",
-      "name": "Portainer Docker Management",
+      "id": "portainer-stacks",
+      "name": "Portainer stacks",
       "type": "portainer",
-      "enabled": true,
-      "priority": 52,
-      "host": "192.168.1.100",
-      "port": 9000,
-      "credentials": {
-        "api_key_env": "PORTAINER_API_KEY"
-      },
-      "options": {
-        "backup_config": true,
-        "backup_templates": true,
-        "use_api": true
-      }
-    },
-    {
-      "id": "yacht-docker",
-      "name": "Yacht Docker Dashboard",
-      "type": "yacht",
-      "enabled": true,
-      "priority": 53,
-      "host": "192.168.1.100",
-      "port": 8000,
-      "options": {
-        "backup_templates": true,
-        "backup_config": true
-      }
-    },
-    {
-      "id": "syncthing-sync",
-      "name": "Syncthing P2P File Sync",
-      "type": "syncthing",
-      "enabled": true,
-      "priority": 54,
-      "host": "192.168.1.100",
-      "port": 8384,
-      "credentials": {
-        "api_key_env": "SYNCTHING_API_KEY"
-      },
-      "options": {
-        "backup_config": true,
-        "backup_data": true,
-        "use_api": true
-      }
-    },
-    {
-      "id": "restic-server",
-      "name": "Restic Backup Server",
-      "type": "restic",
-      "enabled": true,
-      "priority": 55,
-      "host": "192.168.1.100",
-      "port": 8000,
-      "credentials": {
-        "password_env": "RESTIC_PASSWORD"
-      },
-      "options": {
-        "backup_repository": true,
-        "backup_method": "export"
-      }
-    },
-    {
-      "id": "photoprism-photos",
-      "name": "PhotoPrism AI Photo Library",
-      "type": "photoprism",
-      "enabled": true,
-      "priority": 56,
-      "host": "192.168.1.100",
-      "port": 2342,
-      "credentials": {
-        "username_env": "PHOTOPRISM_USER",
-        "password_env": "PHOTOPRISM_PASSWORD"
-      },
-      "options": {
-        "backup_storage": true,
-        "backup_database": true,
-        "backup_method": "docker-volume"
-      }
-    },
-    {
-      "id": "komga-comics",
-      "name": "Komga Comics/Manga Server",
-      "type": "komga",
-      "enabled": true,
-      "priority": 57,
-      "host": "192.168.1.100",
-      "port": 8080,
-      "credentials": {
-        "username_env": "KOMGA_USER",
-        "password_env": "KOMGA_PASSWORD"
-      },
-      "options": {
-        "backup_library": false,
-        "backup_metadata": true,
-        "backup_database": true
+      "enabled": false,
+      "priority": 7,
+      "config": {
+        "host": "diskstation",
+        "port": 9443,
+        "https": true,
+        "backup_method": "api",
+        "credentials": {
+          "api_key_env": "PORTAINER_API_KEY"
+        },
+        "options": {
+          "verify_ssl": true
+        }
       }
     },
     {
       "id": "supabase-project",
-      "name": "Supabase Production",
+      "name": "Supabase project",
       "type": "supabase",
-      "enabled": true,
-      "priority": 58,
-      "project_ref": "abcdefghijklmnop",
-      "region": "aws-0-us-east-1",
-      "backup_mode": "full",
-      "credentials": {
-        "db_password_env": "SUPABASE_DB_PASSWORD",
-        "service_role_key_env": "SUPABASE_SERVICE_ROLE_KEY"
-      },
-      "options": {
-        "include_storage": true,
-        "include_auth_config": true,
-        "compress": true
+      "enabled": false,
+      "priority": 8,
+      "config": {
+        "connection_string": "postgresql://postgres.PROJECT:[YOUR-PASSWORD]@HOST:5432/postgres",
+        "service_role_key": "store through encrypted settings instead of committing a real key",
+        "backup_mode": "full",
+        "options": {
+          "include_storage": true,
+          "include_auth_config": true,
+          "compress": true
+        }
       }
     }
   ]

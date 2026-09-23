@@ -19,30 +19,57 @@ class Config:
     # Flask
     SECRET_KEY = os.environ.get('SECRET_KEY', '')
     DEBUG = os.environ.get('DEBUG', 'false').lower() == 'true'
+    FORCE_HTTPS = os.environ.get('FORCE_HTTPS', 'false').lower() == 'true'
+    TRUST_PROXY_HEADERS = os.environ.get(
+        'TRUST_PROXY_HEADERS', 'false'
+    ).lower() == 'true'
 
-    @staticmethod
-    def validate():
+    @classmethod
+    def validate(cls):
         """Validate critical configuration at startup"""
-        if not Config.SECRET_KEY or Config.SECRET_KEY == 'dev-secret-key-change-in-production':
+        insecure_values = {
+            'dev-secret-key-change-in-production',
+            'CHANGE_ME',
+            'CHANGE_THIS_TO_A_RANDOM_SECRET_KEY',
+        }
+        if cls.SECRET_KEY in insecure_values or len(cls.SECRET_KEY) < 32:
             raise RuntimeError(
-                "FATAL: SECRET_KEY is not set or uses the insecure default. "
-                "Set a strong, random SECRET_KEY environment variable. "
+                "FATAL: SECRET_KEY must be a random value of at least 32 characters. "
                 "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
             )
+        if len(cls.JWT_SECRET_KEY) < 32:
+            raise RuntimeError('FATAL: JWT_SECRET_KEY must be at least 32 characters')
 
     # Database
     DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:////data/backupgenie.db')
     SQLALCHEMY_DATABASE_URI = DATABASE_URL
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    APP_INIT_LOCK_PATH = os.environ.get(
+        'APP_INIT_LOCK_PATH', '/data/.backupgenie-init.lock'
+    )
 
     # Backup Configuration
     BACKUP_BASE_PATH = os.environ.get('BACKUP_BASE_PATH', '/mnt/backup')
     MAX_PARALLEL_TASKS = _get_int_env('MAX_PARALLEL_TASKS', 2)
     LOG_RETENTION_DAYS = _get_int_env('LOG_RETENTION_DAYS', 30)
+    JOB_LOCK_PATH = os.environ.get(
+        'JOB_LOCK_PATH', '/data/.backupgenie-job.lock'
+    )
+    RESTORE_JOB_PATH = os.environ.get(
+        'RESTORE_JOB_PATH', '/data/restore-jobs'
+    )
+    RESTORE_JOB_LOCK_PATH = os.environ.get(
+        'RESTORE_JOB_LOCK_PATH', '/data/.backupgenie-restore-job.lock'
+    )
+    DOCKER_HELPER_IMAGE = os.environ.get(
+        'DOCKER_HELPER_IMAGE', 'alpine:3.24.1'
+    )
 
     # API Configuration
     API_PORT = _get_int_env('API_PORT', 5000)
-    API_HOST = os.environ.get('API_HOST', '0.0.0.0')
+    # The container must listen on its network interface; the published port
+    # and reverse proxy control external exposure.
+    API_HOST = os.environ.get('API_HOST', '0.0.0.0')  # nosec B104
 
     # JWT Configuration
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', SECRET_KEY)

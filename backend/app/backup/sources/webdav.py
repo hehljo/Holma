@@ -151,6 +151,11 @@ class WebDAVBackup(BackupHandler):
                 timeout=3600
             )
 
+            if result.returncode != 0:
+                raise Exception(
+                    f"WebDAV rsync failed with code {result.returncode}: {result.stderr[:500]}"
+                )
+
             # Parse rsync stats
             files_synced = 0
             size_synced = 0

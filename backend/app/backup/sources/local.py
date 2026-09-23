@@ -24,6 +24,7 @@ class LocalBackup(BackupHandler):
 
         total_files = 0
         total_size = 0
+        errors = []
 
         for source_path in sources:
             try:
@@ -31,7 +32,9 @@ class LocalBackup(BackupHandler):
 
                 # Verify source exists
                 if not os.path.exists(source_path):
-                    self.log(f"WARNING: Source path does not exist: {source_path}")
+                    message = f"Source path does not exist: {source_path}"
+                    errors.append(message)
+                    self.log(f"ERROR: {message}")
                     continue
 
                 # Create destination subdirectory
@@ -45,13 +48,16 @@ class LocalBackup(BackupHandler):
                 total_size += result['size_synced']
 
             except Exception as e:
-                self.log(f"ERROR backing up {source_path}: {str(e)}")
+                message = f"Failed to back up {source_path}: {str(e)}"
+                errors.append(message)
+                self.log(f"ERROR: {message}")
                 logger.error(f"Error backing up {source_path}: {e}")
 
         return {
             'files_synced': total_files,
             'size_synced': total_size,
-            'logs': self.get_logs()
+            'logs': self.get_logs(),
+            'errors': errors,
         }
 
     def _rsync_path(self, source, dest):
@@ -93,6 +99,9 @@ class LocalBackup(BackupHandler):
             self.log(result.stdout)
         if result.stderr:
             self.log(result.stderr)
+
+        if result.returncode != 0:
+            raise Exception(f"rsync failed with code {result.returncode}")
 
         # Parse rsync stats
         files_synced = 0

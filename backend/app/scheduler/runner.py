@@ -1,8 +1,8 @@
 """
 Scheduler loop.
 
-Started as a single process from entrypoint.sh, next to gunicorn. Because it
-runs exactly once per container, no cross-worker locking is needed.
+Started as a single process from entrypoint.sh, next to gunicorn. It only
+queues durable jobs; the dedicated backup worker executes them.
 
 Every tick it checks which enabled sources are due, then starts one backup run
 containing all of them — not one run per source — so a shared 03:00 schedule
@@ -14,7 +14,6 @@ import logging
 import os
 import signal
 import threading
-import uuid
 
 from app.scheduler.schedule import (
     describe_schedule,
@@ -116,45 +115,26 @@ class BackupScheduler:
 
         return due
 
-    def _backup_in_progress(self):
-        from app.models.backup import Backup
-
-        return Backup.query.filter(
-            Backup.status.in_(['pending', 'running'])
-        ).count() > 0
-
     def _start_backup(self, source_ids, now):
-        from app import db
-        from app.backup.executor import BackupExecutor
-        from app.models.backup import Backup
+        from app.backup.jobs import configured_parallel_limit, reserve_backup
 
-        backup_id = str(uuid.uuid4())
-        backup = Backup(
-            backup_id=backup_id,
-            status='pending',
+        parallel = configured_parallel_limit()
+        backup, selected = reserve_backup(
+            self._load_sources(),
+            source_ids,
             trigger_type='scheduled',
+            parallel=parallel,
         )
-        db.session.add(backup)
-        db.session.commit()
 
-        parallel = int(os.environ.get('MAX_PARALLEL_TASKS', '2') or 2)
-        executor = BackupExecutor(backup_id)
-
-        thread = threading.Thread(
-            target=executor.execute,
-            args=(source_ids, parallel),
-            daemon=True,
-        )
-        thread.start()
-
-        for source_id in source_ids:
+        for source_id in (source['id'] for source in selected):
             self._set_last_run(source_id, now)
 
         logger.info(
-            'Scheduled backup %s started for %d source(s): %s',
-            backup_id, len(source_ids), ', '.join(source_ids),
+            'Scheduled backup %s queued for %d source(s): %s',
+            backup.backup_id, len(selected),
+            ', '.join(source['id'] for source in selected),
         )
-        return backup_id
+        return backup.backup_id
 
     def tick(self):
         """One scheduling pass. Safe to call directly in tests."""
@@ -166,15 +146,26 @@ class BackupScheduler:
             if not due:
                 return None
 
-            if self._backup_in_progress():
-                # Leave last_run untouched so these stay due and fire on a
-                # later tick once the running backup finishes.
+            from app.backup.jobs import JobConflictError, active_source_ids
+
+            busy = active_source_ids() & set(due)
+            available = [source_id for source_id in due if source_id not in busy]
+            if not available:
                 logger.info(
                     'Backup already running, deferring %d scheduled source(s)', len(due)
                 )
                 return None
 
-            return self._start_backup(due, now)
+            if busy:
+                logger.info('Deferring busy scheduled source(s): %s', ', '.join(sorted(busy)))
+
+            try:
+                return self._start_backup(available, now)
+            except JobConflictError:
+                # Another process won the reservation race. Last-run markers
+                # remain untouched, so the scheduler retries on the next tick.
+                logger.info('Scheduled source reservation raced; retrying next tick')
+                return None
 
     def run(self):
         logger.info('Backup scheduler started (tick every %ss)', TICK_SECONDS)

@@ -4,6 +4,7 @@ Database Models
 from datetime import datetime
 from app import db
 import json
+from app.time_utils import utc_now_naive
 
 
 class Backup(db.Model):
@@ -13,7 +14,7 @@ class Backup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     backup_id = db.Column(db.String(36), unique=True, nullable=False)
     status = db.Column(db.String(20), nullable=False, default='pending')  # pending, running, completed, failed
-    started_at = db.Column(db.DateTime, default=datetime.utcnow)
+    started_at = db.Column(db.DateTime, default=utc_now_naive)
     completed_at = db.Column(db.DateTime, nullable=True)
     duration = db.Column(db.Integer, nullable=True)  # seconds
     total_size = db.Column(db.BigInteger, default=0)  # bytes
@@ -50,7 +51,7 @@ class BackupSourceResult(db.Model):
     source_name = db.Column(db.String(200), nullable=False)
     source_type = db.Column(db.String(50), nullable=False)
     status = db.Column(db.String(20), nullable=False, default='pending')
-    started_at = db.Column(db.DateTime, default=datetime.utcnow)
+    started_at = db.Column(db.DateTime, default=utc_now_naive)
     completed_at = db.Column(db.DateTime, nullable=True)
     duration = db.Column(db.Integer, nullable=True)
     files_synced = db.Column(db.Integer, default=0)
@@ -84,7 +85,7 @@ class Setting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(100), unique=True, nullable=False)
     value = db.Column(db.Text, nullable=True)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=utc_now_naive, onupdate=utc_now_naive)
 
     @staticmethod
     def get(key, default=None):
@@ -135,7 +136,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now_naive)
     last_login = db.Column(db.DateTime, nullable=True)
 
     def to_dict(self):

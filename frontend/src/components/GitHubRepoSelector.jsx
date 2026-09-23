@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { GitBranch, Lock, Unlock, RefreshCw, Search, AlertCircle } from 'lucide-react'
 import { sourcesAPI } from '../services/api'
 import clsx from 'clsx'
+import PropTypes from 'prop-types'
+import { useTranslation } from 'react-i18next'
 
 /**
  * GitHub Repository Selector Component
@@ -24,28 +26,29 @@ export default function GitHubRepoSelector({
   onSelectedReposChange,
   onExcludeChange,
 }) {
+  const { t } = useTranslation()
   const [repos, setRepos] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
 
-  const fetchRepos = async () => {
+  const fetchRepos = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const response = await sourcesAPI.discoverGitHub()
       setRepos(response.data.repos || [])
     } catch (err) {
-      const msg = err.response?.data?.error || 'Failed to fetch repositories'
+      const msg = err.response?.data?.error || t('githubSelector.loadError')
       setError(msg)
     } finally {
       setLoading(false)
     }
-  }
+  }, [t])
 
   useEffect(() => {
     fetchRepos()
-  }, [])
+  }, [fetchRepos])
 
   const filteredRepos = repos.filter(repo =>
     repo.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -102,7 +105,7 @@ export default function GitHubRepoSelector({
       {/* Discovery Mode Toggle */}
       <div className="flex items-center gap-4">
         <label className="block text-sm font-medium text-gray-700">
-          Discovery Mode
+          {t('githubSelector.mode')}
         </label>
         <div className="flex rounded-lg overflow-hidden border border-gray-300">
           <button
@@ -115,7 +118,7 @@ export default function GitHubRepoSelector({
             )}
             onClick={() => onDiscoveryModeChange('all')}
           >
-            All Repos
+            {t('githubSelector.all')}
           </button>
           <button
             type="button"
@@ -127,14 +130,14 @@ export default function GitHubRepoSelector({
             )}
             onClick={() => onDiscoveryModeChange('manual')}
           >
-            Manual Selection
+            {t('githubSelector.manual')}
           </button>
         </div>
       </div>
 
       {discoveryMode === 'all' && (
         <p className="text-sm text-gray-500">
-          All repositories will be backed up. Uncheck repos below to exclude them.
+          {t('githubSelector.allHint')}
         </p>
       )}
 
@@ -145,7 +148,7 @@ export default function GitHubRepoSelector({
           <input
             type="text"
             className="input pl-9"
-            placeholder="Search repositories..."
+            placeholder={t('githubSelector.search')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -157,13 +160,15 @@ export default function GitHubRepoSelector({
           disabled={loading}
         >
           <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
-          Refresh
+          {t('githubSelector.refresh')}
         </button>
       </div>
 
       {/* Status Bar */}
       <div className="text-sm text-gray-500">
-        {loading ? 'Loading repositories...' : `${selectedCount} of ${repos.length} repos selected`}
+        {loading
+          ? t('githubSelector.loading')
+          : t('githubSelector.selected', { selected: selectedCount, total: repos.length })}
       </div>
 
       {/* Error */}
@@ -204,22 +209,22 @@ export default function GitHubRepoSelector({
                   {repo.private ? (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                       <Lock className="w-3 h-3" />
-                      Private
+                      {t('githubSelector.private')}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                       <Unlock className="w-3 h-3" />
-                      Public
+                      {t('githubSelector.public')}
                     </span>
                   )}
                   {repo.fork && (
                     <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                      Fork
+                      {t('githubSelector.fork')}
                     </span>
                   )}
                   {repo.archived && (
                     <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
-                      Archived
+                      {t('githubSelector.archived')}
                     </span>
                   )}
                 </div>
@@ -239,7 +244,7 @@ export default function GitHubRepoSelector({
 
           {filteredRepos.length === 0 && (
             <div className="px-4 py-8 text-center text-gray-500 text-sm">
-              {searchQuery ? 'No repositories match your search.' : 'No repositories found.'}
+              {searchQuery ? t('githubSelector.noMatch') : t('githubSelector.empty')}
             </div>
           )}
         </div>
@@ -255,4 +260,13 @@ export default function GitHubRepoSelector({
       )}
     </div>
   )
+}
+
+GitHubRepoSelector.propTypes = {
+  discoveryMode: PropTypes.oneOf(['all', 'manual']),
+  selectedRepos: PropTypes.arrayOf(PropTypes.string),
+  excludeRepos: PropTypes.arrayOf(PropTypes.string),
+  onDiscoveryModeChange: PropTypes.func.isRequired,
+  onSelectedReposChange: PropTypes.func.isRequired,
+  onExcludeChange: PropTypes.func.isRequired,
 }

@@ -17,12 +17,9 @@ Thanks for considering a contribution! This document outlines the process for fi
 ## Development Setup
 
 ```bash
-# Backend
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python run.py
+# Backend container, from the project root
+export SECRET_KEY="development-secret-at-least-32-characters"
+docker compose up -d --build backend
 
 # Frontend
 cd frontend
@@ -37,9 +34,10 @@ The frontend dev server proxies API calls to the backend at `http://localhost:50
 1. Create a handler in `backend/app/backup/sources/<name>.py`
 2. Extend `BackupHandler` from `backend/app/backup/base.py`
 3. Implement `backup()` returning `{'files_synced': int, 'size_synced': int, 'logs': str}`
-4. Register the handler in `backend/app/backup/executor.py` (`HANDLER_REGISTRY`)
+4. Register the handler type in `BackupExecutor.handlers` in `backend/app/backup/executor.py`
 5. Add the source type to `frontend/src/components/SourceModal.jsx` (`SOURCE_TYPES` array + config form)
 6. Add German + English labels to `frontend/src/locales/`
+7. Add a regression test under `backend/tests/` and run the documented unittest, lint and build gates
 
 ## Pull Requests
 

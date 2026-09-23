@@ -6,8 +6,14 @@ import subprocess
 import logging
 import os
 import shutil
+import sqlite3
+import requests
+from contextlib import closing
+from urllib.parse import quote
+from pathlib import Path
 from datetime import datetime
 from app.backup.base import BackupHandler
+from app.credential_files import mongodb_password_file, mysql_defaults_file
 
 logger = logging.getLogger(__name__)
 
@@ -41,40 +47,34 @@ class MySQLBackup(BackupHandler):
         try:
             self.log(f"Starting MySQL backup: {host}:{port}")
 
-            # Build mysqldump command
-            cmd = [
-                'mysqldump',
-                f'--host={host}',
-                f'--port={port}',
-                f'--user={username}',
-                f'--password={password}',
-                '--single-transaction',
-                '--routines',
-                '--triggers',
-                '--events'
-            ]
+            with mysql_defaults_file(host, port, username, password) as defaults_file:
+                cmd = [
+                    'mysqldump',
+                    f'--defaults-extra-file={defaults_file}',
+                    '--single-transaction',
+                    '--routines',
+                    '--triggers',
+                    '--events',
+                ]
 
-            # Add options
-            options = self.source_config.get('options', {})
-            if options.get('compress', True):
-                cmd.append('--compress')
+                options = self.source_config.get('options', {})
+                if options.get('compress', True):
+                    cmd.append('--compress')
 
-            # Add databases
-            if databases == ['--all-databases']:
-                cmd.extend(databases)
-            else:
-                cmd.append('--databases')
-                cmd.extend(databases)
+                if databases == ['--all-databases']:
+                    cmd.extend(databases)
+                else:
+                    cmd.append('--databases')
+                    cmd.extend(databases)
 
-            # Execute dump
-            with open(backup_file, 'w') as f:
-                result = subprocess.run(
-                    cmd,
-                    stdout=f,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    timeout=3600
-                )
+                with open(backup_file, 'w') as f:
+                    result = subprocess.run(
+                        cmd,
+                        stdout=f,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=3600,
+                    )
 
             if result.returncode != 0:
                 raise Exception(f"mysqldump failed: {result.stderr}")
@@ -153,16 +153,14 @@ class PostgreSQLBackup(BackupHandler):
                 if options.get('data_only', False):
                     cmd.append('--data-only')
 
-                # Execute dump
-                with open(backup_file, 'w') as f:
-                    result = subprocess.run(
-                        cmd,
-                        stdout=f,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        env=env,
-                        timeout=3600
-                    )
+                cmd.extend(['--file', backup_file])
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                    timeout=3600
+                )
 
                 if result.returncode != 0:
                     raise Exception(f"pg_dump failed: {result.stderr}")
@@ -225,10 +223,9 @@ class MongoDBBackup(BackupHandler):
                 f'--out={backup_dir}'
             ]
 
-            if username and password:
+            if username:
                 cmd.extend([
                     f'--username={username}',
-                    f'--password={password}',
                     '--authenticationDatabase=admin'
                 ])
 
@@ -240,13 +237,21 @@ class MongoDBBackup(BackupHandler):
             if options.get('gzip', True):
                 cmd.append('--gzip')
 
-            # Execute dump
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=3600
-            )
+            if password:
+                with mongodb_password_file(password) as config_file:
+                    result = subprocess.run(
+                        cmd + [f'--config={config_file}'],
+                        capture_output=True,
+                        text=True,
+                        timeout=3600,
+                    )
+            else:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=3600,
+                )
 
             if result.returncode != 0:
                 raise Exception(f"mongodump failed: {result.stderr}")
@@ -291,66 +296,34 @@ class RedisBackup(BackupHandler):
         try:
             self.log(f"Starting Redis backup: {host}:{port}")
 
-            # Build redis-cli command to trigger BGSAVE
+            # redis-cli can stream a consistent RDB snapshot from a remote
+            # server directly to a local file. Reading CONFIG GET dir and then
+            # copying that path only works when Redis shares this filesystem.
             cmd = ['redis-cli', '-h', host, '-p', str(port)]
-
+            env = os.environ.copy()
             if password:
-                cmd.extend(['-a', password])
+                env['REDISCLI_AUTH'] = password
 
-            # Trigger background save
             result = subprocess.run(
-                cmd + ['BGSAVE'],
+                cmd + ['--rdb', backup_file],
                 capture_output=True,
                 text=True,
-                timeout=10
+                env=env,
+                timeout=300,
             )
 
-            if 'Background saving started' not in result.stdout:
-                raise Exception(f"BGSAVE failed: {result.stdout}")
+            if result.returncode != 0:
+                raise Exception(f"Redis RDB transfer failed: {result.stderr[:500]}")
+            size = self._get_file_size(backup_file)
+            if size <= 0:
+                raise Exception("Redis returned an empty RDB backup")
 
-            self.log("Background save started, waiting for completion...")
-
-            # Wait for save to complete
-            import time
-            max_wait = 300  # 5 minutes
-            wait_time = 0
-
-            while wait_time < max_wait:
-                time.sleep(2)
-                wait_time += 2
-
-                check = subprocess.run(
-                    cmd + ['LASTSAVE'],
-                    capture_output=True,
-                    text=True
-                )
-
-                # In production, you'd compare timestamps
-                break  # Simplified for now
-
-            # Get RDB file location
-            config = subprocess.run(
-                cmd + ['CONFIG', 'GET', 'dir'],
-                capture_output=True,
-                text=True
-            )
-
-            rdb_dir = config.stdout.split('\n')[1] if config.stdout else '/var/lib/redis'
-            rdb_file = os.path.join(rdb_dir, 'dump.rdb')
-
-            # Copy RDB file
-            if os.path.exists(rdb_file):
-                shutil.copy2(rdb_file, backup_file)
-                size = self._get_file_size(backup_file)
-                self.log(f"Redis backup completed: {backup_file} ({size} bytes)")
-
-                return {
-                    'files_synced': 1,
-                    'size_synced': size,
-                    'logs': self.get_logs()
-                }
-            else:
-                raise Exception(f"RDB file not found: {rdb_file}")
+            self.log(f"Redis backup completed: {backup_file} ({size} bytes)")
+            return {
+                'files_synced': 1,
+                'size_synced': size,
+                'logs': self.get_logs()
+            }
 
         except subprocess.TimeoutExpired:
             self.log("ERROR: Redis backup timeout")
@@ -379,7 +352,7 @@ class SQLiteBackup(BackupHandler):
         try:
             for db_file in source_files:
                 if not os.path.exists(db_file):
-                    self.log(f"WARNING: Database file not found: {db_file}")
+                    self.log(f"ERROR: Database file not found: {db_file}")
                     continue
 
                 self.log(f"Backing up SQLite database: {db_file}")
@@ -390,24 +363,19 @@ class SQLiteBackup(BackupHandler):
                     f"{db_name}_{timestamp}.db"
                 )
 
-                # Use SQLite backup command for safe copying
-                cmd = [
-                    'sqlite3',
-                    db_file,
-                    f'.backup {backup_file}'
-                ]
-
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=300
-                )
-
-                if result.returncode != 0:
-                    # Fallback to file copy
-                    self.log("Using file copy method...")
-                    shutil.copy2(db_file, backup_file)
+                source_uri = Path(db_file).resolve().as_uri() + '?mode=ro'
+                with closing(
+                    sqlite3.connect(source_uri, uri=True, timeout=30)
+                ) as source_db:
+                    with closing(
+                        sqlite3.connect(backup_file, timeout=30)
+                    ) as backup_db:
+                        source_db.backup(backup_db)
+                        quick_check = backup_db.execute('PRAGMA quick_check').fetchone()
+                        if not quick_check or quick_check[0] != 'ok':
+                            raise Exception(
+                                f"SQLite backup integrity check failed: {quick_check}"
+                            )
 
                 size = self._get_file_size(backup_file)
                 total_size += size
@@ -455,26 +423,21 @@ class CouchDBBackup(BackupHandler):
 
                 backup_file = os.path.join(self.dest_path, f"couchdb_{db}_{timestamp}.json")
 
-                # Use curl to export database
-                url = f"http://{host}:{port}/{db}/_all_docs?include_docs=true"
-
-                cmd = [
-                    'curl',
-                    '-X', 'GET',
-                    '-u', f'{username}:{password}',
-                    '-o', backup_file,
-                    url
-                ]
-
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=3600
+                url = (
+                    f"http://{host}:{port}/{quote(str(db), safe='')}/"
+                    '_all_docs?include_docs=true'
                 )
-
-                if result.returncode != 0:
-                    raise Exception(f"CouchDB backup failed: {result.stderr}")
+                with requests.get(
+                    url,
+                    auth=(username, password),
+                    stream=True,
+                    timeout=(10, 3600),
+                ) as response:
+                    response.raise_for_status()
+                    with open(backup_file, 'wb') as file:
+                        for chunk in response.iter_content(chunk_size=1024 * 1024):
+                            if chunk:
+                                file.write(chunk)
 
                 size = self._get_file_size(backup_file)
                 total_size += size
@@ -525,8 +488,9 @@ class InfluxDBBackup(BackupHandler):
                 'influx', 'backup',
                 backup_dir,
                 '--host', f'http://{host}:{port}',
-                '--token', token,
             ]
+            process_env = os.environ.copy()
+            process_env['INFLUX_TOKEN'] = token
 
             if org:
                 cmd.extend(['--org', org])
@@ -538,7 +502,8 @@ class InfluxDBBackup(BackupHandler):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=3600
+                timeout=3600,
+                env=process_env,
             )
 
             if result.returncode != 0:

@@ -1,107 +1,73 @@
 import { useState, useEffect } from 'react'
 import {
   X, HardDrive, Cloud, Folder, Database, Eye, EyeOff,
-  GitBranch, Server, Lock, Mail, Image, Home, FileText,
-  Package, Cpu, Globe, Archive, Book, Users, Shield,
-  Activity, Boxes, Film, Music, Camera, MessageSquare, AlertCircle,
+  GitBranch, Server, Home, Package, Activity, Boxes, AlertCircle,
   Search, Zap, CheckCircle, Loader2
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import clsx from 'clsx'
 import { sourcesAPI, settingsAPI } from '../services/api'
 import GitHubRepoSelector from './GitHubRepoSelector'
-import ScheduleFields, { DEFAULT_SCHEDULE, describeSchedule } from './ScheduleFields'
+import ScheduleFields from './ScheduleFields'
+import { DEFAULT_SCHEDULE, describeSchedule } from './schedule'
+import PropTypes from 'prop-types'
 
-// Complete list of 60+ backup source types organized by category
+// Only source types supported by the standard container and this form.
 const SOURCE_TYPES = [
-  // Network Storage (4)
-  { value: 'nas', label: 'NAS (SMB/CIFS)', icon: HardDrive, category: 'Network Storage' },
-  { value: 'nfs', label: 'NFS', icon: Server, category: 'Network Storage' },
-  { value: 'rsync-ssh', label: 'Rsync over SSH', icon: Server, category: 'Network Storage' },
-  { value: 'webdav', label: 'WebDAV', icon: Cloud, category: 'Network Storage' },
+  // Network Storage
+  { value: 'nas', icon: HardDrive, category: 'network' },
+  { value: 'rsync-ssh', icon: Server, category: 'network' },
+  { value: 'webdav', icon: Cloud, category: 'network' },
 
   // Local Storage (1)
-  { value: 'local', label: 'Local Directory', icon: Folder, category: 'Local Storage' },
+  { value: 'local', icon: Folder, category: 'local' },
 
   // Git Platforms (6)
-  { value: 'github', label: 'GitHub', icon: GitBranch, category: 'Git Platforms' },
-  { value: 'gitlab', label: 'GitLab', icon: GitBranch, category: 'Git Platforms' },
-  { value: 'gitea', label: 'Gitea', icon: GitBranch, category: 'Git Platforms' },
-  { value: 'forgejo', label: 'Forgejo', icon: GitBranch, category: 'Git Platforms' },
-  { value: 'bitbucket', label: 'Bitbucket', icon: GitBranch, category: 'Git Platforms' },
-  { value: 'codeberg', label: 'Codeberg', icon: GitBranch, category: 'Git Platforms' },
+  { value: 'github', icon: GitBranch, category: 'git' },
+  { value: 'gitlab', icon: GitBranch, category: 'git' },
+  { value: 'gitea', icon: GitBranch, category: 'git' },
+  { value: 'forgejo', icon: GitBranch, category: 'git' },
+  { value: 'bitbucket', icon: GitBranch, category: 'git' },
+  { value: 'codeberg', icon: GitBranch, category: 'git' },
 
-  // Databases (7)
-  { value: 'mysql', label: 'MySQL/MariaDB', icon: Database, category: 'Databases' },
-  { value: 'postgresql', label: 'PostgreSQL', icon: Database, category: 'Databases' },
-  { value: 'mongodb', label: 'MongoDB', icon: Database, category: 'Databases' },
-  { value: 'redis', label: 'Redis', icon: Database, category: 'Databases' },
-  { value: 'sqlite', label: 'SQLite', icon: Database, category: 'Databases' },
-  { value: 'couchdb', label: 'CouchDB', icon: Database, category: 'Databases' },
-  { value: 'influxdb', label: 'InfluxDB', icon: Activity, category: 'Databases' },
+  // Databases
+  { value: 'mysql', icon: Database, category: 'databases' },
+  { value: 'postgresql', icon: Database, category: 'databases' },
+  { value: 'redis', icon: Database, category: 'databases' },
+  { value: 'sqlite', icon: Database, category: 'databases' },
+  { value: 'couchdb', icon: Database, category: 'databases' },
 
   // Cloud Storage (10)
-  { value: 'gdrive', label: 'Google Drive', icon: Cloud, category: 'Cloud Storage' },
-  { value: 'onedrive', label: 'Microsoft OneDrive', icon: Cloud, category: 'Cloud Storage' },
-  { value: 'dropbox', label: 'Dropbox', icon: Cloud, category: 'Cloud Storage' },
-  { value: 's3', label: 'AWS S3', icon: Cloud, category: 'Cloud Storage' },
-  { value: 'b2', label: 'Backblaze B2', icon: Cloud, category: 'Cloud Storage' },
-  { value: 'icloud', label: 'Apple iCloud', icon: Cloud, category: 'Cloud Storage' },
-  { value: 'box', label: 'Box', icon: Cloud, category: 'Cloud Storage' },
-  { value: 'mega', label: 'MEGA', icon: Cloud, category: 'Cloud Storage' },
-  { value: 'pcloud', label: 'pCloud', icon: Cloud, category: 'Cloud Storage' },
-  { value: 'rclone', label: 'rclone (Generic)', icon: Cloud, category: 'Cloud Storage' },
+  { value: 'gdrive', icon: Cloud, category: 'cloud' },
+  { value: 'onedrive', icon: Cloud, category: 'cloud' },
+  { value: 'dropbox', icon: Cloud, category: 'cloud' },
+  { value: 's3', icon: Cloud, category: 'cloud' },
+  { value: 'b2', icon: Cloud, category: 'cloud' },
+  { value: 'icloud', icon: Cloud, category: 'cloud' },
+  { value: 'box', icon: Cloud, category: 'cloud' },
+  { value: 'mega', icon: Cloud, category: 'cloud' },
+  { value: 'pcloud', icon: Cloud, category: 'cloud' },
+  { value: 'rclone', icon: Cloud, category: 'cloud' },
 
   // FTP/SFTP (3)
-  { value: 'ftp', label: 'FTP/FTPS', icon: Server, category: 'FTP/SFTP' },
-  { value: 'sftp', label: 'SFTP', icon: Server, category: 'FTP/SFTP' },
+  { value: 'ftp', icon: Server, category: 'transfer' },
+  { value: 'sftp', icon: Server, category: 'transfer' },
 
   // Docker (2)
-  { value: 'docker-volume', label: 'Docker Volumes', icon: Package, category: 'Docker' },
-  { value: 'docker-image', label: 'Docker Images', icon: Boxes, category: 'Docker' },
+  { value: 'docker-volume', icon: Package, category: 'docker' },
+  { value: 'docker-image', icon: Boxes, category: 'docker' },
 
-  // Media Servers (5)
-  { value: 'plex', label: 'Plex', icon: Film, category: 'Media Servers' },
-  { value: 'jellyfin', label: 'Jellyfin', icon: Film, category: 'Media Servers' },
-  { value: 'immich', label: 'Immich', icon: Camera, category: 'Media Servers' },
-  { value: 'photoprism', label: 'PhotoPrism', icon: Image, category: 'Media Servers' },
-  { value: 'komga', label: 'Komga', icon: Book, category: 'Media Servers' },
-
-  // Smart Home (5)
-  { value: 'homeassistant', label: 'Home Assistant', icon: Home, category: 'Smart Home' },
-  { value: 'grafana', label: 'Grafana', icon: Activity, category: 'Smart Home' },
-  { value: 'nodered', label: 'Node-RED', icon: Activity, category: 'Smart Home' },
-  { value: 'prometheus', label: 'Prometheus', icon: Activity, category: 'Smart Home' },
-  { value: 'loki', label: 'Loki', icon: FileText, category: 'Smart Home' },
-
-  // Security (2)
-  { value: 'vaultwarden', label: 'Vaultwarden', icon: Lock, category: 'Security' },
-  { value: 'bitwarden', label: 'Bitwarden', icon: Shield, category: 'Security' },
-
-  // Documentation (3)
-  { value: 'mediawiki', label: 'MediaWiki', icon: Book, category: 'Documentation' },
-  { value: 'tiddlywiki', label: 'TiddlyWiki', icon: Book, category: 'Documentation' },
-  { value: 'obsidian', label: 'Obsidian', icon: FileText, category: 'Documentation' },
-
-  // Communication (3)
-  { value: 'mailcow', label: 'Mailcow', icon: Mail, category: 'Communication' },
-  { value: 'mastodon', label: 'Mastodon', icon: Users, category: 'Communication' },
-  { value: 'mattermost', label: 'Mattermost', icon: MessageSquare, category: 'Communication' },
-
-  // Content Management (4)
-  { value: 'paperless-ngx', label: 'Paperless-NGX', icon: FileText, category: 'Content Management' },
-  { value: 'archivebox', label: 'ArchiveBox', icon: Archive, category: 'Content Management' },
-  { value: 'wallabag', label: 'Wallabag', icon: Book, category: 'Content Management' },
-  { value: 'linkding', label: 'Linkding', icon: Globe, category: 'Content Management' },
+  // Read-only API configuration exports
+  { value: 'homeassistant', icon: Home, category: 'smartHome' },
+  { value: 'grafana', icon: Activity, category: 'smartHome' },
+  { value: 'nodered', icon: Activity, category: 'smartHome' },
 
   // Cloud Platforms (1)
-  { value: 'supabase', label: 'Supabase', icon: Zap, category: 'Databases' },
+  { value: 'supabase', icon: Zap, category: 'databases' },
 
-  // Management Tools (4)
-  { value: 'portainer', label: 'Portainer', icon: Package, category: 'Management Tools' },
-  { value: 'yacht', label: 'Yacht', icon: Package, category: 'Management Tools' },
-  { value: 'syncthing', label: 'Syncthing', icon: Activity, category: 'Management Tools' },
-  { value: 'restic', label: 'Restic', icon: Archive, category: 'Management Tools' },
+  // Management Tools
+  { value: 'portainer', icon: Package, category: 'management' },
+  { value: 'syncthing', icon: Activity, category: 'management' },
 ]
 
 // Group source types by category for better UX
@@ -111,21 +77,12 @@ const SOURCE_CATEGORIES = SOURCE_TYPES.reduce((acc, type) => {
   return acc
 }, {})
 
-// Map source types to which credential provider they need
-const SOURCE_CREDENTIAL_MAP = {
-  'github': 'github',
-  'nas': 'nas',
-  'smb': 'nas',
-  'nfs': 'nas',
-  'supabase': 'supabase',
-}
-
 export default function SourceModal({ isOpen, onClose, onSave, editingSource }) {
   const { t } = useTranslation()
   const [showPassword, setShowPassword] = useState(false)
   const [showToken, setShowToken] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
-  const [selectedCategory, setSelectedCategory] = useState('Network Storage')
+  const [selectedCategory, setSelectedCategory] = useState('network')
   const [searchQuery, setSearchQuery] = useState('')
   const [connectionTestStatus, setConnectionTestStatus] = useState(null) // null, 'testing', 'success', 'error'
   const [connectionTestMessage, setConnectionTestMessage] = useState('')
@@ -163,7 +120,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
         config: {}
       })
       setUseDefaultSchedule(true)
-      setSelectedCategory('Network Storage')
+      setSelectedCategory('network')
     }
   }, [editingSource, isOpen])
 
@@ -231,10 +188,15 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
       if (config.token) normalized.token = config.token
     }
 
-    if (['nas', 'nfs'].includes(source.type) && config.host && config.share) {
-      normalized.source = source.type === 'nfs'
-        ? `${config.host}:${config.share}`
-        : `//${config.host}/${String(config.share).replace(/^\/+/, '')}`
+    if (source.type === 'nas' && config.host && config.share) {
+      normalized.source = `//${config.host}/${String(config.share).replace(/^\/+/, '')}`
+    }
+
+    if (['homeassistant', 'grafana', 'nodered', 'portainer', 'syncthing'].includes(source.type)) {
+      config.backup_method = 'api'
+      if (source.type === 'portainer' && config.https === undefined) {
+        config.https = true
+      }
     }
 
     return normalized
@@ -268,7 +230,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
       return (
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <p className="text-sm text-amber-800">
-            Kein {label}-Profil konfiguriert. Bitte unter <strong>Einstellungen → Zugangsdaten</strong> anlegen.
+            {t('sourceForm.credentialMissing', { label })}
           </p>
         </div>
       )
@@ -277,7 +239,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
       return (
         <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
           <p className="text-sm text-green-800">
-            {label}: Profil <strong>{profiles[0].profile}</strong> wird verwendet.
+            {t('sourceForm.profileUsed', { label, profile: profiles[0].profile })}
           </p>
         </div>
       )
@@ -285,20 +247,24 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
     return (
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          {label} - Profil auswählen
+          {t('sourceForm.selectProfile', { label })}
         </label>
         <select
           className="input"
           value={formData.config.credential_profile || ''}
           onChange={(e) => handleConfigChange('credential_profile', e.target.value)}
         >
-          <option value="">Automatisch (erstes Profil)</option>
+          <option value="">{t('sourceForm.automaticProfile')}</option>
           {profiles.map(p => (
             <option key={p.profile} value={p.profile}>{p.profile}</option>
           ))}
         </select>
       </div>
     )
+  }
+  CredentialProfileSelect.propTypes = {
+    provider: PropTypes.string.isRequired,
+    label: PropTypes.string.isRequired,
   }
 
   // Get config fields based on selected type
@@ -311,7 +277,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
         <div className="space-y-4">
           <CredentialProfileSelect provider="nas" label="NAS" />
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Host/IP *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.hostIp')}</label>
             <input
               type="text"
               className="input"
@@ -322,7 +288,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Share Name *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.shareName')}</label>
             <input
               type="text"
               className="input"
@@ -333,7 +299,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Remote Path</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.remotePath')}</label>
             <input
               type="text"
               className="input"
@@ -343,7 +309,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.username')}</label>
             <input
               type="text"
               className="input"
@@ -353,7 +319,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.password')}</label>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
@@ -379,7 +345,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
       return (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Host/IP *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.hostIp')}</label>
             <input
               type="text"
               className="input"
@@ -390,7 +356,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Export Path *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.exportPath')}</label>
             <input
               type="text"
               className="input"
@@ -401,7 +367,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Remote Path</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.remotePath')}</label>
             <input
               type="text"
               className="input"
@@ -418,7 +384,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
       return (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Host *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.host')}</label>
             <input
               type="text"
               className="input"
@@ -429,7 +395,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Port</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.port')}</label>
             <input
               type="number"
               className="input"
@@ -439,7 +405,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Remote Path *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.remotePathRequired')}</label>
             <input
               type="text"
               className="input"
@@ -450,7 +416,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.username')}</label>
             <input
               type="text"
               className="input"
@@ -460,7 +426,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">SSH Key Path</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.sshKeyPath')}</label>
             <input
               type="text"
               className="input"
@@ -468,7 +434,25 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               onChange={(e) => handleConfigChange('ssh_key_path', e.target.value)}
               placeholder="~/.ssh/id_rsa"
             />
-            <p className="text-xs text-gray-500 mt-1">Leave empty to use password authentication</p>
+            <p className="text-xs text-gray-500 mt-1">{t('sourceForm.sshKeyHint')}</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.password')}</label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                className="input pr-10"
+                value={formData.config.password || ''}
+                onChange={(e) => handleConfigChange('password', e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
+              >
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
         </div>
       )
@@ -478,7 +462,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
       return (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Host *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.host')}</label>
             <input
               type="text"
               className="input"
@@ -489,7 +473,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Path</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.path')}</label>
             <input
               type="text"
               className="input"
@@ -499,7 +483,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.username')}</label>
             <input
               type="text"
               className="input"
@@ -508,7 +492,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.password')}</label>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
@@ -533,7 +517,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
     if (type === 'local') {
       return (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Local Path *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.localPath')}</label>
           <input
             type="text"
             className="input"
@@ -570,7 +554,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {type === 'gitlab' ? 'GitLab Instance' : 'Host'} {type === 'gitlab' && '(optional)'}
+              {type === 'gitlab' ? t('sourceForm.gitlabInstance') : t('sourceForm.hostOptional')}
             </label>
             <input
               type="text"
@@ -587,7 +571,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Repositories *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.repositories')}</label>
             <input
               type="text"
               className="input"
@@ -596,10 +580,10 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               placeholder="username/repository"
               required
             />
-            <p className="text-xs text-gray-500 mt-1">Format: username/repository or org/repository</p>
+            <p className="text-xs text-gray-500 mt-1">{t('sourceForm.repositoryFormat')}</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Access Token *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.accessToken')}</label>
             <div className="relative">
               <input
                 type={showToken ? "text" : "password"}
@@ -630,7 +614,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
       return (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Host *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.host')}</label>
             <input
               type="text"
               className="input"
@@ -641,7 +625,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Port</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.port')}</label>
             <input
               type="number"
               className="input"
@@ -658,7 +642,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
           </div>
           {type !== 'redis' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Database Name</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.databaseName')}</label>
               <input
                 type="text"
                 className="input"
@@ -666,11 +650,11 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                 onChange={(e) => handleConfigChange('database', e.target.value)}
                 placeholder={type === 'mongodb' ? 'myapp' : 'production_db'}
               />
-              <p className="text-xs text-gray-500 mt-1">Leave empty to backup all databases</p>
+              <p className="text-xs text-gray-500 mt-1">{t('sourceForm.databaseEmpty')}</p>
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.username')}</label>
             <input
               type="text"
               className="input"
@@ -680,7 +664,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.password')}</label>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
@@ -704,7 +688,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
     if (type === 'sqlite') {
       return (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Database File Path *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.databaseFilePath')}</label>
           <input
             type="text"
             className="input"
@@ -730,26 +714,25 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
               <div className="text-sm text-blue-800">
                 <p className="font-semibold mb-1">
-                  {needsOAuth ? 'OAuth2 Authentication Required' : 'API Credentials Required'}
+                  {needsOAuth ? t('sourceForm.oauthRequired') : t('sourceForm.apiCredentialsRequired')}
                 </p>
                 {needsOAuth ? (
                   <>
-                    <p className="mb-2">Configure rclone manually first:</p>
+                    <p className="mb-2">{t('sourceForm.configureRclone')}</p>
                     <code className="block bg-blue-100 p-2 rounded text-xs mb-2">
                       docker exec -it backupgenie-backend rclone config
                     </code>
                     <p className="text-xs">
-                      Follow the interactive prompts to authenticate with {
-                        type === 'gdrive' ? 'Google Drive' :
-                        type === 'onedrive' ? 'Microsoft OneDrive' :
-                        type === 'dropbox' ? 'Dropbox' :
-                        'your cloud provider'
-                      }. Then enter the remote name below.
+                      {t('sourceForm.rcloneAuthHint', {
+                        provider: t(`sourceTypes.${type}`)
+                      })}
                     </p>
                   </>
                 ) : (
                   <p className="text-xs">
-                    Enter your {type === 's3' ? 'AWS' : 'Backblaze B2'} credentials below.
+                    {t('sourceForm.enterProviderCredentials', {
+                      provider: type === 's3' ? 'AWS' : 'Backblaze B2'
+                    })}
                   </p>
                 )}
               </div>
@@ -760,7 +743,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
           {needsOAuth && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                rclone Remote Name *
+                {t('sourceForm.rcloneRemoteName')}
               </label>
               <input
                 type="text"
@@ -776,7 +759,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                 required
               />
               <p className="text-xs text-gray-500 mt-1">
-                The name you configured with 'rclone config'
+                {t('sourceForm.rcloneRemoteHint')}
               </p>
             </div>
           )}
@@ -786,7 +769,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             <>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {type === 's3' ? 'AWS Access Key ID *' : 'Application Key ID *'}
+                  {type === 's3' ? 'AWS Access Key ID *' : t('sourceForm.applicationKeyId')}
                 </label>
                 <input
                   type="text"
@@ -799,7 +782,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {type === 's3' ? 'AWS Secret Access Key *' : 'Application Key *'}
+                  {type === 's3' ? 'AWS Secret Access Key *' : t('sourceForm.applicationKey')}
                 </label>
                 <div className="relative">
                   <input
@@ -807,7 +790,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                     className="input pr-10"
                     value={formData.config.secret_key || ''}
                     onChange={(e) => handleConfigChange('secret_key', e.target.value)}
-                    placeholder="Your secret key"
+                    placeholder={t('sourceForm.secretKey')}
                     required
                   />
                   <button
@@ -822,7 +805,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               {type === 's3' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Region *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.region')}</label>
                     <input
                       type="text"
                       className="input"
@@ -831,10 +814,10 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                       placeholder="us-east-1"
                       required
                     />
-                    <p className="text-xs text-gray-500 mt-1">AWS region (e.g., us-east-1, eu-west-1)</p>
+                    <p className="text-xs text-gray-500 mt-1">{t('sourceForm.regionHint')}</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Bucket Name *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.bucketName')}</label>
                     <input
                       type="text"
                       className="input"
@@ -848,7 +831,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               )}
               {type === 'b2' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Bucket Name *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.bucketName')}</label>
                   <input
                     type="text"
                     className="input"
@@ -864,7 +847,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
 
           {/* Folder Path */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Folder Path *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.folderPath')}</label>
             <input
               type="text"
               className="input"
@@ -880,9 +863,9 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               required
             />
             <p className="text-xs text-gray-500 mt-1">
-              {type === 's3' || type === 'b2' ?
-                'Path/prefix within the bucket' :
-                'Path within your ' + (type === 'gdrive' ? 'Google Drive' : type === 'onedrive' ? 'OneDrive' : type === 'dropbox' ? 'Dropbox' : 'cloud storage')}
+              {type === 's3' || type === 'b2'
+                ? t('sourceForm.bucketPathHint')
+                : t('sourceForm.cloudPathHint', { provider: t(`sourceTypes.${type}`) })}
             </p>
           </div>
         </div>
@@ -894,7 +877,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
       return (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Host *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.host')}</label>
             <input
               type="text"
               className="input"
@@ -905,7 +888,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Port</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.port')}</label>
             <input
               type="number"
               className="input"
@@ -914,7 +897,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Remote Path</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.remotePath')}</label>
             <input
               type="text"
               className="input"
@@ -924,7 +907,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.username')}</label>
             <input
               type="text"
               className="input"
@@ -934,7 +917,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {type === 'sftp' ? 'Password or SSH Key' : 'Password'}
+              {type === 'sftp' ? t('sourceForm.passwordOrSshKey') : t('sourceForm.password')}
             </label>
             <div className="relative">
               <input
@@ -961,7 +944,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
       return (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Volume Names *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.volumeNames')}</label>
             <input
               type="text"
               className="input"
@@ -970,7 +953,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               placeholder="mysql_data, nginx_config, app_uploads"
               required
             />
-            <p className="text-xs text-gray-500 mt-1">Comma-separated list of Docker volume names</p>
+            <p className="text-xs text-gray-500 mt-1">{t('sourceForm.volumeHint')}</p>
           </div>
         </div>
       )
@@ -980,7 +963,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
       return (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Image Names *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.imageNames')}</label>
             <input
               type="text"
               className="input"
@@ -989,22 +972,18 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               placeholder="nginx:latest, mysql:8.0, myapp:production"
               required
             />
-            <p className="text-xs text-gray-500 mt-1">Comma-separated list of Docker image names</p>
+            <p className="text-xs text-gray-500 mt-1">{t('sourceForm.imageHint')}</p>
           </div>
         </div>
       )
     }
 
     // Self-Hosted Services - Generic config for all
-    if (['plex', 'jellyfin', 'immich', 'photoprism', 'komga', 'homeassistant',
-         'grafana', 'nodered', 'prometheus', 'loki', 'vaultwarden', 'bitwarden',
-         'mediawiki', 'tiddlywiki', 'obsidian', 'mailcow', 'mastodon', 'mattermost',
-         'paperless-ngx', 'archivebox', 'wallabag', 'linkding', 'portainer',
-         'yacht', 'syncthing', 'restic'].includes(type)) {
+    if (['homeassistant', 'grafana', 'nodered', 'portainer', 'syncthing'].includes(type)) {
       return (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Host *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.host')}</label>
             <input
               type="text"
               className="input"
@@ -1015,16 +994,14 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Port</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.port')}</label>
             <input
               type="number"
               className="input"
               value={formData.config.port || (
-                type === 'plex' ? 32400 :
-                type === 'jellyfin' ? 8096 :
                 type === 'homeassistant' ? 8123 :
                 type === 'grafana' ? 3000 :
-                type === 'portainer' ? 9000 :
+                type === 'portainer' ? 9443 :
                 8080
               )}
               onChange={(e) => handleConfigChange('port', parseInt(e.target.value))}
@@ -1032,21 +1009,15 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {type === 'plex' ? 'Plex Token' : 'API Key / Token'}
+              {t('sourceForm.apiKeyToken')}
             </label>
             <div className="relative">
               <input
                 type={showApiKey ? "text" : "password"}
                 className="input pr-10"
                 value={formData.config.api_key || formData.config.token || ''}
-                onChange={(e) => {
-                  if (type === 'plex') {
-                    handleConfigChange('token', e.target.value)
-                  } else {
-                    handleConfigChange('api_key', e.target.value)
-                  }
-                }}
-                placeholder="Enter API key or token"
+                onChange={(e) => handleConfigChange('api_key', e.target.value)}
+                placeholder={t('sourceForm.apiKeyPlaceholder')}
               />
               <button
                 type="button"
@@ -1057,6 +1028,19 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               </button>
             </div>
           </div>
+          {type === 'portainer' && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formData.config.options?.verify_ssl !== false}
+                onChange={(e) => handleConfigChange('options', {
+                  ...formData.config.options,
+                  verify_ssl: e.target.checked
+                })}
+              />
+              <span className="text-sm text-gray-700">{t('sourceForm.tlsVerify')}</span>
+            </label>
+          )}
         </div>
       )
     }
@@ -1072,36 +1056,36 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
           }
           const response = await sourcesAPI.testSupabase(testData)
           setConnectionTestStatus('success')
-          setConnectionTestMessage(response.data.message || 'Verbindung erfolgreich!')
+          setConnectionTestMessage(response.data.message || t('sources.testSuccess'))
         } catch (error) {
           setConnectionTestStatus('error')
-          setConnectionTestMessage(error.response?.data?.error || 'Verbindungstest fehlgeschlagen')
+          setConnectionTestMessage(error.response?.data?.error || t('sources.testError'))
         }
       }
 
       return (
         <div className="space-y-4">
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-900 font-semibold mb-2">So legst du ein Supabase-Profil an:</p>
+            <p className="text-sm text-blue-900 font-semibold mb-2">{t('sourceForm.supabaseIntro')}</p>
             <ol className="text-xs text-blue-800 space-y-1 list-decimal list-inside">
-              <li>In <strong>Settings → Credentials</strong> ein neues Supabase-Profil anlegen</li>
-              <li>Im Supabase Dashboard auf "Connect" klicken → <strong>Session Pooler</strong> → URI kopieren</li>
-              <li>Connection String + DB Passwort ins Profil eintragen, speichern</li>
-              <li>Hier dann das Profil auswählen — fertig</li>
+              <li>{t('sourceForm.supabaseStep1')}</li>
+              <li>{t('sourceForm.supabaseStep2')}</li>
+              <li>{t('sourceForm.supabaseStep3')}</li>
+              <li>{t('sourceForm.supabaseStep4')}</li>
             </ol>
           </div>
 
           <CredentialProfileSelect provider="supabase" label="Supabase" />
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Backup Mode</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('sourceForm.backupMode')}</label>
             <select
               className="input"
               value={formData.config.backup_mode || 'db_only'}
               onChange={(e) => handleConfigChange('backup_mode', e.target.value)}
             >
-              <option value="db_only">Database Only (Roles + Schema + Data)</option>
-              <option value="full">Full (DB + Storage + Config)</option>
+              <option value="db_only">{t('sourceForm.dbOnly')}</option>
+              <option value="full">{t('sourceForm.full')}</option>
             </select>
           </div>
 
@@ -1117,7 +1101,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                     include_storage: e.target.checked
                   })}
                 />
-                <span className="text-sm text-gray-700">Storage Buckets einschließen</span>
+                <span className="text-sm text-gray-700">{t('sourceForm.includeStorage')}</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -1129,7 +1113,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                     include_auth_config: e.target.checked
                   })}
                 />
-                <span className="text-sm text-gray-700">Auth/RLS Config einschließen</span>
+                <span className="text-sm text-gray-700">{t('sourceForm.includeAuth')}</span>
               </label>
             </div>
           )}
@@ -1144,7 +1128,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                 compress: e.target.checked
               })}
             />
-            <span className="text-sm text-gray-700">Backup komprimieren (tar.gz)</span>
+            <span className="text-sm text-gray-700">{t('sourceForm.compress')}</span>
           </label>
 
           {/* Connection Test Button */}
@@ -1172,7 +1156,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               ) : (
                 <Zap className="w-4 h-4" />
               )}
-              {connectionTestStatus === 'testing' ? 'Teste...' : 'Verbindung testen'}
+              {connectionTestStatus === 'testing' ? t('sources.testing') : t('sources.testConnection')}
             </button>
             {connectionTestMessage && (
               <p className={clsx(
@@ -1191,7 +1175,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
     return (
       <div className="p-4 bg-blue-50 rounded-lg">
         <p className="text-sm text-blue-700">
-          Configuration for this source type will be available soon. Please configure manually in sources.json.
+          {t('sourceForm.unavailable')}
         </p>
       </div>
     )
@@ -1211,7 +1195,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
           {/* Header */}
           <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-4 md:px-6 dark:border-gray-800 dark:bg-gray-900">
             <h2 className="min-w-0 truncate text-lg font-bold text-gray-900 md:text-xl">
-              {editingSource ? 'Edit Source' : t('sources.addSource')}
+              {editingSource ? t('sourceForm.editTitle') : t('sources.addSource')}
             </h2>
             <button
               onClick={onClose}
@@ -1228,14 +1212,14 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Source Name *
+                  {t('sourceForm.sourceName')}
                 </label>
                 <input
                   type="text"
                   className="input"
                   value={formData.name}
                   onChange={(e) => handleChange('name', e.target.value)}
-                  placeholder="My Backup Source"
+                  placeholder={t('sourceForm.sourceNamePlaceholder')}
                   required
                 />
               </div>
@@ -1243,7 +1227,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               {/* Category Tabs */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Source Type * ({SOURCE_TYPES.length}+ types)
+                  {t('sourceForm.sourceTypeCount', { count: SOURCE_TYPES.length })}
                 </label>
 
                 {/* Search Field */}
@@ -1254,7 +1238,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                     className="input pl-10 pr-10"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Suche: z.B. Supabase, GitHub, Docker..."
+                    placeholder={t('sourceForm.searchPlaceholder')}
                   />
                   {searchQuery && (
                     <button
@@ -1273,10 +1257,10 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
 
                   if (q) {
                     // Search mode: show all matching types grouped by category
-                    const filtered = SOURCE_TYPES.filter(t =>
-                      t.label.toLowerCase().includes(q) ||
-                      t.category.toLowerCase().includes(q) ||
-                      t.value.toLowerCase().includes(q)
+                    const filtered = SOURCE_TYPES.filter(sourceType =>
+                      t(`sourceTypes.${sourceType.value}`).toLowerCase().includes(q) ||
+                      t(`sourceCategories.${sourceType.category}`).toLowerCase().includes(q) ||
+                      sourceType.value.toLowerCase().includes(q)
                     )
                     const groupedResults = filtered.reduce((acc, t) => {
                       if (!acc[t.category]) acc[t.category] = []
@@ -1287,7 +1271,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                     if (filtered.length === 0) {
                       return (
                         <div className="text-center py-6 text-gray-500 text-sm">
-                          Kein Source-Typ gefunden für "{searchQuery}"
+                          {t('sourceForm.noSourceType', { query: searchQuery })}
                         </div>
                       )
                     }
@@ -1296,9 +1280,11 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                       <div className="space-y-3">
                         {Object.entries(groupedResults).map(([category, types]) => (
                           <div key={category}>
-                            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{category}</p>
+                            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">
+                              {t(`sourceCategories.${category}`)}
+                            </p>
                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                              {types.map(({ value, label, icon: Icon }) => (
+                              {types.map(({ value, icon: Icon }) => (
                                 <button
                                   key={value}
                                   type="button"
@@ -1318,7 +1304,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                                     'text-center text-xs font-medium leading-snug md:text-sm',
                                     formData.type === value ? 'text-primary-700' : 'text-gray-700'
                                   )}>
-                                    {label}
+                                    {t(`sourceTypes.${value}`)}
                                   </span>
                                 </button>
                               ))}
@@ -1346,14 +1332,14 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             )}
                           >
-                            {category} ({SOURCE_CATEGORIES[category].length})
+                            {t(`sourceCategories.${category}`)} ({SOURCE_CATEGORIES[category].length})
                           </button>
                         ))}
                       </div>
 
                       {/* Type Grid */}
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                        {SOURCE_CATEGORIES[selectedCategory]?.map(({ value, label, icon: Icon }) => (
+                        {SOURCE_CATEGORIES[selectedCategory]?.map(({ value, icon: Icon }) => (
                           <button
                             key={value}
                             type="button"
@@ -1373,7 +1359,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                               'text-center text-xs font-medium leading-snug md:text-sm',
                               formData.type === value ? 'text-primary-700' : 'text-gray-700'
                             )}>
-                              {label}
+                              {t(`sourceTypes.${value}`)}
                             </span>
                           </button>
                         ))}
@@ -1386,7 +1372,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Priority
+                    {t('sources.priority')}
                   </label>
                   <input
                     type="number"
@@ -1396,7 +1382,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                     min="1"
                     max="100"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Higher priority = backed up first</p>
+                  <p className="text-xs text-gray-500 mt-1">{t('sourceForm.priorityHint')}</p>
                 </div>
 
                 <div>
@@ -1411,7 +1397,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                       {t('sources.enabled')}
                     </span>
                   </label>
-                  <p className="text-xs text-gray-500 mt-1">Enable automatic backups</p>
+                  <p className="text-xs text-gray-500 mt-1">{t('sourceForm.enabledHint')}</p>
                 </div>
               </div>
             </div>
@@ -1452,10 +1438,10 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
 
             {/* Type-specific config */}
             <div className="border-t border-gray-200 pt-4 md:pt-6">
-              <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3">Configuration</h3>
+              <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3">{t('sourceForm.configuration')}</h3>
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
                 <p className="text-xs text-amber-800">
-                  Zugangsdaten (Tokens, Passwörter, API-Keys) werden global unter <strong>Settings → Credentials</strong> verwaltet. Dort einmal eintragen, gilt für alle Quellen dieses Typs.
+                  {t('sourceForm.credentialNotice')}
                 </p>
               </div>
               {renderConfigFields()}
@@ -1482,4 +1468,14 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
       </div>
     </div>
   )
+}
+
+SourceModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onSave: PropTypes.func.isRequired,
+  editingSource: PropTypes.shape({
+    type: PropTypes.string,
+    schedule: PropTypes.object,
+  }),
 }

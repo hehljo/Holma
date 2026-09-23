@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Clock, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, FileText, RotateCcw, Eye, EyeOff, Loader2, X } from 'lucide-react'
 import { backupAPI, restoreAPI, settingsAPI } from '../services/api'
 import clsx from 'clsx'
 import { formatDistanceToNow } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { pollRestoreStatus } from '../services/restorePolling'
 
 export default function History() {
   const { t } = useTranslation()
@@ -34,12 +35,9 @@ export default function History() {
   const [restoreStatus, setRestoreStatus] = useState(null) // null, 'starting', 'running', 'completed', 'failed'
   const [restoreResult, setRestoreResult] = useState(null)
   const [confirmRestore, setConfirmRestore] = useState(false)
+  const restorePollController = useRef(null)
 
-  useEffect(() => {
-    loadHistory()
-  }, [page])
-
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     setIsLoading(true)
     try {
       const response = await backupAPI.getHistory(limit, page * limit)
@@ -50,7 +48,13 @@ export default function History() {
       console.error('Error loading history:', error)
       setIsLoading(false)
     }
-  }
+  }, [page])
+
+  useEffect(() => {
+    loadHistory()
+  }, [loadHistory])
+
+  useEffect(() => () => restorePollController.current?.abort(), [])
 
   const formatBytes = (bytes) => {
     if (bytes === 0) return '0 Bytes'
@@ -140,28 +144,22 @@ export default function History() {
     try {
       const response = await restoreAPI.start(restoreForm)
       const restoreId = response.data.restore_id
-      setRestoreStatus('running')
-
-      // Poll for status + live logs
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusResponse = await restoreAPI.getStatus(restoreId)
-          const data = statusResponse.data
-
-          if (data.logs) setRestoreResult(prev => ({ ...prev, logs: data.logs }))
-
-          if (data.status !== 'running') {
-            clearInterval(pollInterval)
-            setRestoreStatus(data.status)
-            setRestoreResult(data)
-          }
-        } catch (e) {
-          // Keep polling
-        }
-      }, 2000)
+      restorePollController.current?.abort()
+      const controller = new AbortController()
+      restorePollController.current = controller
+      const result = await pollRestoreStatus(restoreId, {
+        signal: controller.signal,
+        onUpdate: data => {
+          setRestoreStatus(data.status === 'queued' ? 'starting' : data.status)
+          setRestoreResult(data)
+        },
+      })
+      setRestoreStatus(result.status)
+      setRestoreResult(result)
     } catch (error) {
+      if (error.name === 'CanceledError' || error.name === 'AbortError') return
       setRestoreStatus('failed')
-      setRestoreResult({ error: error.response?.data?.error || 'Restore fehlgeschlagen' })
+      setRestoreResult({ error: error.response?.data?.error || t('restore.genericError') })
     }
   }
 
@@ -231,7 +229,7 @@ export default function History() {
             {/* Backup-level error message */}
             {backup.error_message && (
               <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm font-medium text-red-800 mb-1">Fehler / Error:</p>
+                <p className="text-sm font-medium text-red-800 mb-1">{t('common.error')}:</p>
                 <pre className="text-xs text-red-700 font-mono whitespace-pre-wrap">{backup.error_message}</pre>
               </div>
             )}
@@ -265,10 +263,10 @@ export default function History() {
                             <button
                               onClick={() => openRestoreModal(source.source_id, source.source_type)}
                               className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-xs font-medium"
-                              title="Restore"
+                              title={t('restore.action')}
                             >
                               <RotateCcw className="w-3.5 h-3.5" />
-                              Restore
+                              {t('restore.action')}
                             </button>
                           )}
                           <button
@@ -277,7 +275,7 @@ export default function History() {
                               [`${backup.backup_id}-${source.source_id}`]: !prev[`${backup.backup_id}-${source.source_id}`]
                             }))}
                             className="flex items-center gap-1 text-gray-500 hover:text-gray-700 text-xs"
-                            title="Logs"
+                            title={t('restore.logs')}
                           >
                             <FileText className="w-3.5 h-3.5" />
                             {expandedLogs[`${backup.backup_id}-${source.source_id}`] ? (
@@ -300,7 +298,7 @@ export default function History() {
                               {source.logs}
                             </pre>
                           ) : !source.error_message && (
-                            <p className="text-xs text-gray-400 italic">No logs available</p>
+                            <p className="text-xs text-gray-400 italic">{t('restore.noLogs')}</p>
                           )}
                         </div>
                       )}
@@ -355,10 +353,10 @@ export default function History() {
               <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-xl">
                 <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                   <RotateCcw className="w-5 h-5" />
-                  Supabase Restore
+                  {t('restore.title')}
                 </h2>
                 {!restoreStatus && (
-                  <button onClick={() => setRestoreModal(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                  <button onClick={() => setRestoreModal(null)} className="p-2 hover:bg-gray-100 rounded-lg" aria-label={t('common.close')}>
                     <X className="w-5 h-5" />
                   </button>
                 )}
@@ -383,15 +381,14 @@ export default function History() {
                       {restoreStatus === 'failed' && <XCircle className="w-5 h-5 text-red-600" />}
                       <div>
                         <p className="font-semibold text-gray-900">
-                          {restoreStatus === 'starting' && 'Restore wird gestartet...'}
-                          {restoreStatus === 'running' && 'Restore läuft...'}
-                          {restoreStatus === 'completed' && 'Restore erfolgreich!'}
-                          {restoreStatus === 'partial' && 'Restore teilweise erfolgreich'}
-                          {restoreStatus === 'failed' && 'Restore fehlgeschlagen'}
+                          {t(`restore.${restoreStatus}`)}
                         </p>
                         {restoreResult?.steps_total && (
                           <p className="text-sm text-gray-600">
-                            {restoreResult.steps_completed}/{restoreResult.steps_total} Schritte
+                            {t('restore.steps', {
+                              completed: restoreResult.steps_completed,
+                              total: restoreResult.steps_total,
+                            })}
                           </p>
                         )}
                       </div>
@@ -420,7 +417,7 @@ export default function History() {
                         onClick={() => { setRestoreModal(null); setRestoreStatus(null); setRestoreResult(null) }}
                         className="mt-3 btn btn-secondary text-sm"
                       >
-                        Schließen
+                        {t('common.close')}
                       </button>
                     )}
                   </div>
@@ -431,19 +428,19 @@ export default function History() {
                   <>
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                       <p className="text-sm text-amber-800">
-                        <strong>⚠️ Achtung:</strong> Restore überschreibt Daten im Ziel-Projekt. Nur auf leere oder Test-Projekte anwenden!
+                        {t('restore.safetyWarning')}
                       </p>
                     </div>
 
                     {/* Backup Selection */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Backup auswählen</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{t('restore.selectBackup')}</label>
                       {restoreLoading ? (
                         <div className="flex items-center gap-2 text-gray-500">
-                          <Loader2 className="w-4 h-4 animate-spin" /> Lade Backups...
+                          <Loader2 className="w-4 h-4 animate-spin" /> {t('restore.loadingBackups')}
                         </div>
                       ) : restoreBackups.length === 0 ? (
-                        <p className="text-sm text-gray-500">Keine Backups gefunden</p>
+                        <p className="text-sm text-gray-500">{t('restore.noBackups')}</p>
                       ) : (
                         <select
                           className="input"
@@ -462,11 +459,11 @@ export default function History() {
                     {/* Profile / Manual Connection */}
                     {!useManualConnection ? (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Ziel-Profil *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">{t('restore.targetProfile')}</label>
                         {supabaseProfiles.length === 0 ? (
                           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                             <p className="text-sm text-amber-800">
-                              Kein Supabase-Profil. Leg eins unter <strong>Settings → Credentials</strong> an oder gib unten manuell einen Connection String ein.
+                              {t('restore.noProfileManual')}
                             </p>
                           </div>
                         ) : (
@@ -481,7 +478,7 @@ export default function History() {
                               ))}
                             </select>
                             <p className="text-xs text-gray-500 mt-1">
-                              Connection String + DB Passwort kommen aus dem Profil. Achtung: Das Backup wird auf dieses Ziel-Projekt eingespielt!
+                              {t('restore.profileHint')}
                             </p>
                           </>
                         )}
@@ -490,20 +487,20 @@ export default function History() {
                           onClick={() => setUseManualConnection(true)}
                           className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
                         >
-                          Stattdessen manuell Connection String eingeben
+                          {t('restore.manualConnection')}
                         </button>
                       </div>
                     ) : (
                       <>
                         <div>
                           <div className="flex items-center justify-between mb-2">
-                            <label className="block text-sm font-medium text-gray-700">Ziel Connection String *</label>
+                            <label className="block text-sm font-medium text-gray-700">{t('restore.connectionString')}</label>
                             <button
                               type="button"
                               onClick={() => setUseManualConnection(false)}
                               className="text-xs text-blue-600 hover:text-blue-800 underline"
                             >
-                              Profil verwenden
+                              {t('restore.useProfile')}
                             </button>
                           </div>
                           <input
@@ -519,14 +516,14 @@ export default function History() {
                         </div>
 
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Ziel-DB Password</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">{t('restore.dbPassword')}</label>
                           <div className="relative">
                             <input
                               type={showRestorePassword ? "text" : "password"}
                               className="input pr-10"
                               value={restoreForm.target_db_password}
                               onChange={(e) => setRestoreForm(prev => ({ ...prev, target_db_password: e.target.value }))}
-                              placeholder="Wird in [YOUR-PASSWORD] eingesetzt"
+                              placeholder={t('restore.dbPasswordPlaceholder')}
                             />
                             <button
                               type="button"
@@ -547,12 +544,12 @@ export default function History() {
                         checked={restoreForm.restore_storage}
                         onChange={(e) => setRestoreForm(prev => ({ ...prev, restore_storage: e.target.checked }))}
                       />
-                      <span className="text-sm text-gray-700">Storage-Objekte wiederherstellen</span>
+                      <span className="text-sm text-gray-700">{t('restore.storage')}</span>
                     </label>
 
                     {restoreForm.restore_storage && useManualConnection && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Ziel-Service Role Key</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">{t('restore.serviceRoleKey')}</label>
                         <div className="relative">
                           <input
                             type={showServiceKey ? "text" : "password"}
@@ -578,7 +575,7 @@ export default function History() {
                         onClick={() => setRestoreModal(null)}
                         className="btn btn-secondary flex-1"
                       >
-                        Abbrechen
+                        {t('common.cancel')}
                       </button>
                       <button
                         onClick={() => setConfirmRestore(true)}
@@ -591,7 +588,7 @@ export default function History() {
                         className="btn btn-primary flex-1 disabled:opacity-50"
                       >
                         <RotateCcw className="w-4 h-4 mr-2" />
-                        Restore starten
+                        {t('restore.start')}
                       </button>
                     </div>
                   </>
@@ -605,10 +602,10 @@ export default function History() {
       {/* Confirm Dialog */}
       <ConfirmDialog
         isOpen={confirmRestore}
-        title="Restore bestätigen"
-        message={`Daten werden auf das Ziel-Projekt wiederhergestellt. ${restoreForm.restore_storage ? 'Storage-Objekte werden ebenfalls überschrieben!' : ''} Fortfahren?`}
-        confirmText="Ja, Restore starten"
-        cancelText="Abbrechen"
+        title={t('restore.confirmTitle')}
+        message={`${t('restore.confirmMessage')} ${restoreForm.restore_storage ? t('restore.storageWarning') : ''} ${t('restore.confirmContinue')}`}
+        confirmText={t('restore.confirmStart')}
+        cancelText={t('common.cancel')}
         onConfirm={handleRestore}
         onClose={() => setConfirmRestore(false)}
         confirmVariant="danger"

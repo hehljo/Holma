@@ -14,18 +14,27 @@ from datetime import datetime
 from urllib.parse import quote as quote_path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
+from app.postgres_utils import safe_postgres_command
 
 logger = logging.getLogger(__name__)
 
 
 def _safe_extract(tar, destination):
-    """Extract tar members only inside destination."""
+    """Extract regular files/directories without links or special devices."""
     real_destination = os.path.realpath(destination)
     for member in tar.getmembers():
-        member_path = os.path.realpath(os.path.join(destination, member.name))
-        if not member_path.startswith(real_destination + os.sep) and member_path != real_destination:
-            raise Exception(f"Unsicherer Archivpfad: {member.name}")
-    tar.extractall(destination)
+        member_path = os.path.realpath(os.path.join(real_destination, member.name))
+        try:
+            inside = os.path.commonpath((real_destination, member_path)) == real_destination
+        except ValueError:
+            inside = False
+        if not inside:
+            raise ValueError(f"Unsicherer Archivpfad: {member.name}")
+        if member.issym() or member.islnk():
+            raise ValueError(f"Archiv-Links sind nicht erlaubt: {member.name}")
+        if member.isdev() or member.isfifo():
+            raise ValueError(f"Spezialdateien sind nicht erlaubt: {member.name}")
+    tar.extractall(destination, filter='data')
 
 
 class SupabaseRestore:
@@ -33,20 +42,18 @@ class SupabaseRestore:
 
     def __init__(self):
         self.logs = []
-        self._status_file = None
+        self._status_callback = None
 
     def log(self, message):
         timestamp = datetime.now().strftime('%H:%M:%S')
         entry = f"[{timestamp}] {message}"
         self.logs.append(entry)
         logger.info(message)
-        if self._status_file:
+        if self._status_callback:
             try:
-                import json as _json
-                with open(self._status_file, 'w') as _f:
-                    _json.dump({'status': 'running', 'logs': self.get_logs()}, _f)
+                self._status_callback(self.get_logs())
             except Exception:
-                pass
+                logger.exception('Could not persist restore progress')
 
     def get_logs(self):
         """Get all log entries as string"""
@@ -95,7 +102,7 @@ class SupabaseRestore:
             target_conn = target_conn.replace('[YOUR-PASSWORD]', quote(target_password, safe=''))
 
         # Extract target ref for storage restore
-        match = re.search(r'postgres\.([a-z]+)[:@]', target_conn) or re.search(r'db\.([a-z]+)\.supabase', target_conn)
+        match = re.search(r'postgres\.([a-z0-9-]+)[:@]', target_conn) or re.search(r'db\.([a-z0-9-]+)\.supabase', target_conn)
         target_ref = match.group(1) if match else ''
 
         # Handle tar.gz archives
@@ -104,18 +111,29 @@ class SupabaseRestore:
 
         if backup_path.endswith('.tar.gz'):
             self.log("Entpacke Backup-Archiv...")
-            extract_dir = backup_path.replace('.tar.gz', '_restore_tmp')
-            os.makedirs(extract_dir, exist_ok=True)
-            with tarfile.open(backup_path, 'r:gz') as tar:
-                _safe_extract(tar, extract_dir)
-            # Find the actual backup dir inside
-            subdirs = [d for d in os.listdir(extract_dir)
-                       if os.path.isdir(os.path.join(extract_dir, d))]
-            if subdirs:
-                working_dir = os.path.join(extract_dir, subdirs[0])
-            else:
-                working_dir = extract_dir
+            import tempfile
+            archive_parent = os.path.dirname(os.path.realpath(backup_path))
+            archive_name = os.path.basename(backup_path)[:-7]
+            extract_dir = tempfile.mkdtemp(
+                prefix=f'.{archive_name}_',
+                suffix='_restore_tmp',
+                dir=archive_parent,
+            )
             temp_extracted = True
+            try:
+                with tarfile.open(backup_path, 'r:gz') as tar:
+                    _safe_extract(tar, extract_dir)
+                # Find the actual backup dir inside
+                subdirs = [d for d in os.listdir(extract_dir)
+                           if os.path.isdir(os.path.join(extract_dir, d))]
+                if len(subdirs) == 1:
+                    working_dir = os.path.join(extract_dir, subdirs[0])
+                else:
+                    working_dir = extract_dir
+            except Exception:
+                shutil.rmtree(extract_dir, ignore_errors=True)
+                temp_extracted = False
+                raise
 
         total_steps = 0
         completed_steps = 0
@@ -133,8 +151,7 @@ class SupabaseRestore:
                     self.log("Schema wiederhergestellt ✓")
                 else:
                     errors.append(f"Schema: {result['error']}")
-                    self.log(f"WARNING: Schema-Restore teilweise fehlgeschlagen: {result['error']}")
-                    completed_steps += 1  # Continue anyway
+                    self.log(f"ERROR: Schema-Restore fehlgeschlagen: {result['error']}")
 
             # 2. Restore Data
             data_files = sorted(glob.glob(os.path.join(working_dir, 'data_*.sql')))
@@ -159,8 +176,8 @@ class SupabaseRestore:
                     completed_steps += 1
                     self.log("Roles wiederhergestellt ✓")
                 else:
-                    self.log(f"WARNING: Roles-Restore übersprungen (normal bei Supabase): {result['error']}")
-                    completed_steps += 1  # Don't count as error
+                    errors.append(f"Roles: {result['error']}")
+                    self.log(f"WARNING: Roles-Restore fehlgeschlagen: {result['error']}")
 
             # 4. Restore Auth/Config (optional)
             config_dir = os.path.join(working_dir, 'config')
@@ -174,29 +191,40 @@ class SupabaseRestore:
                         completed_steps += 1
                         self.log("Auth-Schema wiederhergestellt ✓")
                     else:
+                        errors.append(f"Auth-Schema: {result['error']}")
                         self.log(f"WARNING: Auth-Schema-Restore: {result['error']}")
-                        completed_steps += 1
 
             # 5. Storage Restore (optional)
             storage_dir = os.path.join(working_dir, 'storage')
-            if restore_storage and os.path.isdir(storage_dir) and target_service_key:
-                if not target_ref:
-                    raise Exception("Project Ref konnte aus dem Ziel-Connection-String nicht gelesen werden.")
+            if restore_storage:
                 total_steps += 1
-                self.log("Stelle Storage-Objekte wieder her...")
-                try:
-                    storage_result = self._restore_storage(
-                        storage_dir, target_ref, target_service_key
-                    )
-                    completed_steps += 1
-                    self.log(f"Storage wiederhergestellt: {storage_result['files']} Dateien ✓")
-                    if storage_result.get('failed'):
-                        errors.append(
-                            f"Storage: {storage_result['failed']} Uploads fehlgeschlagen"
+                if not os.path.isdir(storage_dir):
+                    errors.append('Storage: Kein Storage-Backup gefunden')
+                    self.log('ERROR: Kein Storage-Backup gefunden')
+                elif not target_service_key:
+                    errors.append('Storage: Service Role Key fehlt')
+                    self.log('ERROR: Service Role Key für Storage-Restore fehlt')
+                elif not target_ref:
+                    errors.append('Storage: Project Ref konnte nicht ermittelt werden')
+                    self.log('ERROR: Project Ref konnte aus dem Ziel-Connection-String nicht gelesen werden')
+                else:
+                    self.log("Stelle Storage-Objekte wieder her...")
+                    try:
+                        storage_result = self._restore_storage(
+                            storage_dir, target_ref, target_service_key
                         )
-                except Exception as e:
-                    errors.append(f"Storage: {str(e)}")
-                    self.log(f"ERROR: Storage-Restore fehlgeschlagen: {e}")
+                        completed_steps += 1
+                        self.log(f"Storage wiederhergestellt: {storage_result['files']} Dateien ✓")
+                        if storage_result.get('failed'):
+                            errors.append(
+                                f"Storage: {storage_result['failed']} Uploads fehlgeschlagen"
+                            )
+                    except Exception as e:
+                        errors.append(f"Storage: {str(e)}")
+                        self.log(f"ERROR: Storage-Restore fehlgeschlagen: {e}")
+
+            if total_steps == 0:
+                raise ValueError('Backup enthält keine wiederherstellbaren Artefakte')
 
             status = 'completed' if not errors else 'partial'
             self.log(f"Restore abgeschlossen: {completed_steps}/{total_steps} Schritte, Status: {status}")
@@ -211,34 +239,35 @@ class SupabaseRestore:
 
         finally:
             # Cleanup temp extraction
-            if temp_extracted and os.path.exists(working_dir):
-                parent = os.path.dirname(working_dir)
-                if parent.endswith('_restore_tmp'):
-                    shutil.rmtree(parent, ignore_errors=True)
+            if temp_extracted and os.path.isdir(extract_dir):
+                shutil.rmtree(extract_dir, ignore_errors=True)
 
     def _run_psql(self, connection_string, sql_file, timeout=3600):
         """Run psql with a SQL file against connection"""
-        env = os.environ.copy()
+        try:
+            safe_connection, env = safe_postgres_command(connection_string)
+        except ValueError as exc:
+            return {'success': False, 'error': str(exc)}
         try:
             result = subprocess.run(
-                ['psql', connection_string, '-f', sql_file,
-                 '--set', 'ON_ERROR_STOP=off'],
+                ['psql', safe_connection, '-f', sql_file,
+                 '--set', 'ON_ERROR_STOP=on'],
                 capture_output=True, text=True, env=env, timeout=timeout
             )
 
-            if result.returncode == 0:
-                return {'success': True, 'output': result.stdout}
-            else:
-                # psql may return non-zero even for warnings
-                stderr = result.stderr.strip()
-                # Filter out common harmless warnings
-                serious_errors = [
-                    line for line in stderr.split('\n')
-                    if 'ERROR' in line and 'already exists' not in line
-                ]
-                if serious_errors:
-                    return {'success': False, 'error': '\n'.join(serious_errors[:5])}
-                return {'success': True, 'output': result.stdout}
+            stderr = result.stderr.strip()
+            serious_errors = [
+                line for line in stderr.splitlines()
+                if 'ERROR:' in line.upper() or 'FATAL:' in line.upper()
+            ]
+            if result.returncode != 0 or serious_errors:
+                error_lines = serious_errors or stderr.splitlines()
+                message = '\n'.join(error_lines[:5]).strip()
+                return {
+                    'success': False,
+                    'error': message or f'psql exited with code {result.returncode}',
+                }
+            return {'success': True, 'output': result.stdout}
 
         except subprocess.TimeoutExpired:
             return {'success': False, 'error': f'Timeout nach {timeout}s'}
@@ -323,7 +352,8 @@ class SupabaseRestore:
         )
 
         try:
-            with urlopen(req, timeout=30) as resp:
+            # api_url is always HTTPS and derived from a validated project ref.
+            with urlopen(req, timeout=30) as resp:  # nosec B310
                 pass  # Created
         except HTTPError as e:
             if e.code in (409, 400):
@@ -350,7 +380,8 @@ class SupabaseRestore:
             method='POST'
         )
 
-        with urlopen(req, timeout=120) as resp:
+        # api_url is always HTTPS and derived from a validated project ref.
+        with urlopen(req, timeout=120) as resp:  # nosec B310
             pass
 
     def _load_bucket_metadata(self, bucket_path, bucket_name, metadata_root):

@@ -1,15 +1,13 @@
 <div align="center">
 
-<img src="icon/icon.png" alt="BackupGenie" width="120" />
-
-# BackupGenie
+<img src="icon/README-Logo.png" alt="BackupGenie" width="560" />
 
 ### Automated Multi-Source Backup Manager
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/Docker-20.10%2B-blue.svg)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20.19%2B-green.svg)](https://nodejs.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow.svg?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/pommesbude)
 
@@ -17,7 +15,7 @@
 
 ---
 
-A self-hosted backup manager with a modern web UI that automatically syncs 60+ source types (NAS, GitHub, Supabase, cloud services, Docker, self-hosted apps). Runs on Raspberry Pi, Synology NAS, any Linux server, or as a Docker container on any platform.
+A self-hosted backup manager with a modern web UI for 35 standard source types including NAS, Git, databases, cloud storage, Docker and Supabase. Runs on ARM64 and AMD64 Docker hosts, including Synology NAS.
 
 > 🌍 Web UI available in **English** and **German**.
 
@@ -27,32 +25,41 @@ A self-hosted backup manager with a modern web UI that automatically syncs 60+ s
 
 ## 🧪 Test Status
 
-> Community-tested sources are marked ✅. Sources marked 🔲 are implemented but awaiting real-world validation — reports welcome via [Discussions](https://github.com/hehljo/BackupGenie/discussions).
+> `✅ Live` bezeichnet einen echten Zielsystemtest. `✅ Auto` bezeichnet grüne Unit-/Fehlerpfad-/Image-Tests; der reale Zielsystemtest ist dort noch offen. `🔲` ist noch nicht belastbar geprüft.
 >
-> **Test environment:** Portainer on a Synology Diskstation (DS720+), Docker Compose stack, multi-arch image (amd64).
+> Historische Live-Ergebnisse wurden noch nicht gegen den aktuellen Remediation-Build wiederholt. Aktuelle Details stehen in `docs/SECURITY_AUDIT_LOCAL.md`.
+>
+> Lokaler Gesamtgate (01.09.2026): 60/60 Backend-Tests, Frontend-Lint und Produktionsbuild grün; npm/pip ohne bekannte Schwachstellen, Bandit ohne hohe oder mittlere Funde.
 
 | Source | Backup | Restore | Notes |
 |--------|--------|---------|-------|
-| **GitHub** (mirror clone, auto-discovery) | ✅ Tested | — | 77 repos, incl. private + orgs |
-| **Supabase** (DB + Storage + Auth Config) | ✅ Tested | ✅ Tested | Full + db\_only mode, live logs |
-| NAS (SMB) | 🔲 | — | |
-| NAS (NFS) | 🔲 | — | |
-| rsync over SSH | 🔲 | — | |
-| GitLab | 🔲 | — | |
-| Bitbucket | 🔲 | — | |
-| Gitea | 🔲 | — | |
-| MySQL | 🔲 | — | |
-| PostgreSQL | 🔲 | — | |
-| MongoDB | 🔲 | — | |
-| Redis | 🔲 | — | |
-| Google Drive (rclone) | 🔲 | — | |
-| Dropbox (rclone) | 🔲 | — | |
-| OneDrive (rclone) | 🔲 | — | |
-| S3 / Backblaze B2 (rclone) | 🔲 | — | |
-| Nextcloud | 🔲 | — | |
-| Portainer / Docker Volumes | 🔲 | — | |
-| Home Assistant | 🔲 | — | |
-| Local filesystem | 🔲 | — | |
+| **GitHub** (mirror clone, auto-discovery) | ✅ Live (Altstand) | — | im vollständigen Backend-Gate geprüft |
+| **Supabase** (DB + Storage + Auth Config) | ✅ Live (Altstand) | ✅ Auto | Restore-Fehlerpfade aktuell geprüft |
+| NAS (SMB) | ✅ Auto | — | Dienst live erreichbar, Anmeldung erzwungen; Testfreigabe-E2E offen |
+| rsync over SSH | ✅ Auto | — | Command-/Secret-Gate; Live offen |
+| GitLab | ✅ Auto | — | gemeinsames Git-Mirror-/Archiv-Gate |
+| Bitbucket | ✅ Auto | — | gemeinsames Git-Mirror-/Archiv-Gate |
+| Gitea / Forgejo / Codeberg | ✅ Auto | — | sauberer Remote/Auth-Vertrag geprüft |
+| MySQL / MariaDB | ✅ Auto | — | Credential-Datei und Image-Client geprüft |
+| PostgreSQL | ✅ Auto | ✅ Auto (Supabase) | CLI, Fehlerpfade und Restore-Sicherheit geprüft |
+| Redis | ✅ Auto | — | Remote-RDB und Secret-Übergabe geprüft |
+| SQLite | ✅ Auto | — | Live-Backup-API plus Integritätscheck geprüft |
+| CouchDB | ✅ Auto | — | read-only HTTP-Handler geprüft; Live offen |
+| Google Drive (rclone) | ✅ Auto | — | nicht-löschendes `rclone copy` + Image-CLI; Live offen |
+| Dropbox (rclone) | ✅ Auto | — | nicht-löschendes `rclone copy` + Image-CLI; Live offen |
+| OneDrive (rclone) | ✅ Auto | — | nicht-löschendes `rclone copy` + Image-CLI; Live offen |
+| S3 / Backblaze B2 (rclone) | ✅ Auto | — | Secret-/Command-/Image-Gate; Live offen |
+| Portainer stack export | ✅ Auto | — | Status-API live auf Port 9000; authentifizierter Export offen |
+| Docker Volumes / Images | ✅ Auto | — | Fehler-/Restart-/Image-CLI-Gates; Live offen |
+| Home Assistant | 🔲 | — | read-only API-Export |
+| Local filesystem | ✅ Auto | — | rsync-Fehlerpfad geprüft; Live offen |
+
+| Host-/Transport-Gate | Status | Notes |
+|----------------------|--------|-------|
+| Tailscale → `diskstation` | ✅ Live | direkte Verbindung, 17 ms |
+| DSM HTTPS (`5001`) | ✅ Live | HTTP 200 |
+| Portainer Status (`9000`) | ✅ Live | API erreichbar; `9443` auf dieser NAS geschlossen |
+| DiskStation Docker-Engine | 🔲 | SSH-Port geschlossen; read-only API-Zugang noch nötig |
 
 If you've tested a source, please [share your setup](https://github.com/hehljo/BackupGenie/discussions) — it helps others a lot.
 
@@ -60,6 +67,9 @@ If you've tested a source, please [share your setup](https://github.com/hehljo/B
 
 ## 🛠️ Recent Fixes
 
+- **Safe Cloud Copies:** rclone sources now use non-deleting `copy`; source-side removals no longer delete files from the backup destination.
+- **Reliable Container Startup:** database/bootstrap initialization is serialized across Gunicorn workers and the backup worker.
+- **Automation Tokens:** USB/systemd jobs can use password-bound tokens that expire after at most 365 days and are revoked by password changes.
 - **Adaptive UI:** The web UI now has consistent touch targets, visible focus states, responsive page shells, mobile-friendly drawers, bottom-sheet modals, and safer wrapping for backup/source lists.
 - **Backup Retention:** Settings now include automatic cleanup plus configurable backup versions per source. Cleanup only removes older timestamp-based artifacts after successful backups; sync/mirror targets are left alone.
 - **Source Handler Compatibility:** Non-GitHub/Supabase handlers now accept UI-created list fields, direct credentials, and path fallbacks more robustly across local, database, Docker, FTP/SFTP, WebDAV, rclone, rsync, self-hosted, and Proxmox sources.
@@ -69,7 +79,7 @@ If you've tested a source, please [share your setup](https://github.com/hehljo/B
 - **Restore Safety:** Restore paths are now restricted to the configured backup directory and archive extraction is protected against path traversal.
 - **GitHub Backups:** Mirror clones no longer store access tokens in remote URLs; failed Git commands are reported as failures instead of successful backups.
 - **Configuration Export:** Secret-like values are redacted recursively before exporting configuration files.
-- **Source Forms:** UI-created sources now normalize paths, lists, repositories, Docker volumes/images, and NAS/NFS shares for the backend handlers.
+- **Source Forms:** UI-created sources now normalize paths, lists, repositories, Docker volumes/images, and NAS/SMB shares for the backend handlers.
 - **Notifications:** Notification endpoints require authentication and the UI uses the real configured channels instead of placeholder data.
 
 ---
@@ -80,14 +90,14 @@ If you've tested a source, please [share your setup](https://github.com/hehljo/B
 <tr>
 <td width="50%">
 
-### 🔄 60+ Backup Sources
-- **Network Storage**: NAS (SMB/NFS), rsync over SSH
+### 🔄 35 Standard Source Types
+- **Network Storage**: NAS (SMB), rsync over SSH, WebDAV
 - **Git Platforms**: GitHub (auto-discovery), GitLab, Bitbucket, Gitea
 - **BaaS/PaaS**: Supabase (DB + Storage + Config)
-- **Databases**: MySQL, PostgreSQL, MongoDB, Redis
+- **Databases**: MySQL/MariaDB, PostgreSQL, Redis, SQLite, CouchDB
 - **Cloud Storage**: Google Drive, Dropbox, OneDrive, S3
-- **Self-Hosted**: Nextcloud, Plex, Home Assistant, Vaultwarden, Portainer
-- **Docker**: volumes, containers, images
+- **API Exports**: Home Assistant, Grafana, Node-RED, Portainer, Syncthing
+- **Docker**: volumes and images
 - **Local**: filesystems, home directories
 
 📚 [Full source list →](docs/BACKUP_SOURCES.md)
@@ -183,10 +193,10 @@ open http://localhost:3000
 ### Hardware
 | Platform | RAM | Architecture |
 |----------|-----|--------------|
-| **Raspberry Pi 3/4/5** | 2 GB+ | ARM/ARM64 |
+| **Raspberry Pi 3/4/5** | 2 GB+ | ARM64 (64-bit OS) |
 | **Synology NAS** | 2 GB+ | x86_64/ARM64 |
 | **Linux Server** | 2 GB+ | x86_64/ARM64 |
-| **Docker Host** | 2 GB+ | x86_64/ARM64/ARM |
+| **Docker Host** | 2 GB+ | x86_64/ARM64 |
 
 Hardware is detected automatically and resources are tuned to match.
 
@@ -197,7 +207,7 @@ Compose: 2.0+
 ```
 
 ### Authentication Requirements
-- 🔑 **NAS**: SMB/NFS credentials
+- 🔑 **NAS**: SMB credentials
 - 🔑 **GitHub**: Personal Access Token
 - 🔑 **Cloud**: OAuth2 credentials or API keys
 - 🔑 **SSH**: private key for rsync
@@ -310,10 +320,12 @@ cp config/sources-example.json config/sources.json
 #### 3. Configure
 
 ```bash
+# Generate a value, then paste it unchanged into .env
+python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
 nano .env
 ```
-```bash
-SECRET_KEY=$(openssl rand -base64 32)
+```dotenv
+SECRET_KEY=paste_the_generated_value_here
 BACKUP_BASE_PATH=/mnt/backups
 ```
 
@@ -346,9 +358,6 @@ sudo apt update && sudo apt upgrade -y
 curl -fsSL https://get.docker.com | bash
 sudo usermod -aG docker pi
 
-# For USB auto-trigger (optional)
-sudo apt install -y usbmount
-
 sudo reboot
 ```
 
@@ -367,10 +376,12 @@ cp config/sources-example.json config/sources.json
 #### 3. Configure
 
 ```bash
+# Generate a value, then paste it unchanged into .env
+python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
 nano .env
 ```
-```bash
-SECRET_KEY=a_long_random_string
+```dotenv
+SECRET_KEY=paste_the_generated_value_here
 BACKUP_BASE_PATH=/mnt/backup
 
 # Pi 3 with limited RAM: tune the limits
@@ -396,14 +407,8 @@ http://raspberrypi.local:3000
 Plug in a USB drive → backup starts automatically:
 
 ```bash
-# Create the udev rule
-sudo nano /etc/udev/rules.d/99-backupgenie-backup.rules
-```
-```
-ACTION=="add", KERNEL=="sd[a-z][0-9]", TAG+="systemd", ENV{SYSTEMD_WANTS}="backupgenie-backup@%k.service"
-```
-```bash
-sudo udevadm control --reload-rules
+sudo python3 scripts/create-api-token.py
+sudo ./scripts/install-systemd.sh
 ```
 
 Detailed guide: [USB Auto-Trigger →](#usb-auto-trigger)
@@ -421,7 +426,8 @@ cd BackupGenie
 cp config/example.env .env
 cp config/sources-example.json config/sources.json
 
-# Adjust .env
+# Generate SECRET_KEY, then paste the output into .env
+python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
 nano .env
 
 # Start
@@ -539,27 +545,29 @@ Since v1.1 you can also export/import all settings directly from the web interfa
 
 ### Backup Sources
 
-BackupGenie supports 60+ backup sources. Configure them in `config/sources.json`:
+BackupGenie exposes 35 source types supported by the standard image and web form. Configure them in `config/sources.json` or through the web UI:
 
 <details>
-<summary>📁 NAS (SMB/NFS)</summary>
+<summary>📁 NAS (SMB)</summary>
 
 ```json
 {
   "id": "nas-project1",
   "name": "NAS - Project 1",
-  "type": "smb",
+  "type": "nas",
   "enabled": true,
   "priority": 1,
-  "source": "//192.168.1.100/projects/project1",
-  "credentials": {
+  "config": {
+    "host": "192.168.1.100",
+    "share": "projects",
+    "path": "project1",
     "username": "backup_user",
-    "password_env": "NAS_PASSWORD"
-  },
-  "options": {
-    "recursive": true,
-    "delete": true,
-    "timeout": 300
+    "credentials": {
+      "password_env": "NAS_PASSWORD"
+    },
+    "options": {
+      "timeout": 3600
+    }
   },
   "schedule": {
     "enabled": true,
@@ -571,9 +579,9 @@ BackupGenie supports 60+ backup sources. Configure them in `config/sources.json`
 }
 ```
 
-**Test connection:**
+**Read-only connection test:**
 ```bash
-smbclient -L //192.168.1.100 -U backup_user
+smbclient //192.168.1.100/projects -U backup_user -c ls
 ```
 
 </details>
@@ -650,7 +658,7 @@ Configuration is done through the Web UI:
 docker exec -it backupgenie-backend rclone config
 ```
 
-Supports: Google Drive, Dropbox, OneDrive, S3, Backblaze B2, and 40+ more!
+The standard form exposes Google Drive, Dropbox, OneDrive, S3, Backblaze B2, iCloud, Box, MEGA and pCloud plus a generic rclone source.
 
 </details>
 
@@ -661,7 +669,7 @@ Supports: Google Drive, Dropbox, OneDrive, S3, Backblaze B2, and 40+ more!
 {
   "id": "docker-volumes",
   "name": "Docker Volumes",
-  "type": "docker",
+  "type": "docker-volume",
   "enabled": true,
   "priority": 4,
   "volumes": ["volume1", "volume2"],
@@ -698,92 +706,49 @@ Supports: Google Drive, Dropbox, OneDrive, S3, Backblaze B2, and 40+ more!
 
 </details>
 
-📚 **[View all 60+ supported sources →](docs/BACKUP_SOURCES.md)**
+📚 **[View all 35 standard source types →](docs/BACKUP_SOURCES.md)**
 
 ### USB Auto-Trigger
 
-Configure automatic backup triggering when a USB drive is connected:
+On a systemd-based Linux host, the included scripts can trigger a backup when a
+USB drive is connected. This is not used on Synology DSM.
 
 <details>
 <summary>Set up udev + systemd</summary>
 
-#### 1. Create the udev rule
+#### 1. Create a revocable automation token
 
 ```bash
-sudo nano /etc/udev/rules.d/99-backupgenie-backup.rules
+sudo python3 scripts/create-api-token.py
 ```
+
+The helper accepts only HTTPS or a local HTTP API, asks for the admin password
+without echoing it, and stores the token with mode `0600`. Automation tokens are
+valid for at most 365 days and are revoked immediately when the account password
+changes.
+
+If the backend uses a different local port:
 
 ```bash
-# Trigger backup when a USB device is added
-ACTION=="add", KERNEL=="sd[a-z][0-9]", TAG+="systemd", ENV{SYSTEMD_WANTS}="backupgenie-backup@%k.service"
+sudo python3 scripts/create-api-token.py \
+  --api-url http://127.0.0.1:5050/api/v1
 ```
 
-#### 2. Create the systemd service
+#### 2. Install the checked-in udev/systemd units
 
 ```bash
-sudo nano /etc/systemd/system/backupgenie-backup@.service
+sudo ./scripts/install-systemd.sh
 ```
 
-```ini
-[Unit]
-Description=BackupGenie Auto-Backup Trigger for %i
-BindsTo=sys-subsystem-block-devices-%i.device
-After=sys-subsystem-block-devices-%i.device
-ConditionPathExists=/opt/BackupGenie/docker-compose.yml
-
-[Service]
-Type=oneshot
-ExecStartPre=/bin/bash -c 'for i in {1..60}; do mountpoint -q /mnt/backup && break || sleep 1; done'
-ExecStart=/opt/BackupGenie/scripts/trigger-backup.sh
-StandardOutput=journal
-StandardError=journal
-User=pi
-Group=docker
-Environment="PATH=/usr/local/bin:/usr/bin:/bin"
-```
-
-#### 3. Create the trigger script
+#### 3. Verify
 
 ```bash
-sudo nano /opt/BackupGenie/scripts/trigger-backup.sh
+sudo systemctl start backupgenie-backup@sda1
+journalctl -u 'backupgenie-backup@*' -n 50
 ```
 
-```bash
-#!/bin/bash
-set -e
-
-LOG_FILE="/var/log/backupgenie-trigger.log"
-API_URL="http://localhost:5000/api/v1/backup/start"
-
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Backup triggered" >> "$LOG_FILE"
-
-# Check if backup directory is mounted
-if ! mountpoint -q "/mnt/backup"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - ERROR: /mnt/backup not mounted" >> "$LOG_FILE"
-    exit 1
-fi
-
-# Start backup via API
-response=$(curl -s -X POST "$API_URL" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $(cat /etc/backupgenie/api-token)" \
-    -d '{"parallel": 2, "notify": true}')
-
-if echo "$response" | grep -q '"status":"started"'; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Backup started successfully" >> "$LOG_FILE"
-else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - ERROR: Backup start failed" >> "$LOG_FILE"
-    exit 1
-fi
-```
-
-#### 4. Activate
-
-```bash
-sudo chmod +x /opt/BackupGenie/scripts/trigger-backup.sh
-sudo systemctl daemon-reload
-sudo udevadm control --reload-rules
-```
+Replace `sda1` with a dedicated test partition. The trigger mounts the selected
+partition at `/mnt/backup`; review that target before the first real run.
 
 </details>
 
@@ -836,8 +801,7 @@ curl -X POST http://localhost:5000/api/v1/backup/start \
   -H "Content-Type: application/json" \
   -d '{
     "sources": ["nas-project1", "github-repos"],
-    "parallel": 2,
-    "notify": true
+    "parallel": 2
   }'
 ```
 
@@ -853,24 +817,16 @@ curl -X GET http://localhost:5000/api/v1/backup/BACKUP_ID \
 
 </details>
 
-### CLI Commands
+### Useful container commands
 
 ```bash
-# Start a backup for specific sources
-docker exec backupgenie-backend python -m app.backup.executor \
-  --source github-repos --source nas-project1
+# Service status and logs
+docker compose ps
+docker compose logs --tail=100 backend
 
-# List all configured sources
-docker exec backupgenie-backend python -m app.cli sources list
-
-# Test a source connection
-docker exec backupgenie-backend python -m app.cli sources test nas-project1
-
-# View backup history
-docker exec backupgenie-backend python -m app.cli backup history --limit 10
-
-# Clean old backups
-docker exec backupgenie-backend python -m app.cleanup --days 30
+# Verify tools included in the backend image
+docker exec backupgenie-backend rclone version
+docker exec backupgenie-backend smbclient --version
 ```
 
 ---
@@ -908,7 +864,8 @@ See the detailed guide: **[i18n Documentation →](docs/i18n.md)**
 
 ### Authentication
 
-All API endpoints require Bearer token authentication.
+All application endpoints except login and health checks require Bearer token
+authentication. Login tokens are valid for 24 hours.
 
 ```bash
 POST /api/v1/auth/login
@@ -923,9 +880,25 @@ Response:
 {
   "access_token": "eyJhbGc...",
   "token_type": "Bearer",
-  "expires_in": 3600
+  "expires_in": 86400,
+  "user": {}
 }
 ```
+
+For unattended scripts, an admin can create a password-bound automation token:
+
+```http
+POST /api/v1/auth/api-token
+Authorization: Bearer LOGIN_TOKEN
+Content-Type: application/json
+
+{
+  "current_password": "your_password",
+  "expires_days": 365
+}
+```
+
+Changing that account's password revokes both login and automation tokens.
 
 ### Endpoints
 
@@ -939,16 +912,16 @@ Authorization: Bearer TOKEN
 
 {
   "sources": ["source-id-1", "source-id-2"],
-  "parallel": 2,
-  "notify": true
+  "parallel": 2
 }
 
-Response 200:
+Response 202:
 {
   "backup_id": "backup-uuid-1234",
-  "status": "started",
+  "status": "queued",
   "started_at": "2025-11-13T19:30:00Z",
-  "sources_count": 2
+  "sources": 2,
+  "parallel": 2
 }
 ```
 
@@ -996,9 +969,7 @@ Response 200:
       "id": "nas-project1",
       "name": "NAS - Project 1",
       "type": "smb",
-      "enabled": true,
-      "last_backup": "2025-11-13T19:30:00Z",
-      "status": "healthy"
+      "enabled": true
     }
   ]
 }
@@ -1022,9 +993,13 @@ Content-Type: application/json
 
 Response 201:
 {
-  "id": "github-org-1",
-  "created_at": "2025-11-13T20:00:00Z",
-  "status": "pending_validation"
+  "message": "Source created successfully",
+  "source": {
+    "id": "github-12345678",
+    "name": "GitHub Org",
+    "type": "github",
+    "enabled": true
+  }
 }
 ```
 
@@ -1046,8 +1021,6 @@ Authorization: Bearer TOKEN
 ```
 
 </details>
-
-📚 **[Complete API documentation →](docs/API.md)**
 
 ---
 
@@ -1100,8 +1073,7 @@ smbclient -L //192.168.1.100 -U backup_user
 # Test from inside Docker
 docker exec backupgenie-backend smbclient -L //192.168.1.100 -U backup_user
 
-# Verify credentials
-cat /etc/backupgenie/credentials
+# Then use Sources → connection test in the Web UI
 ```
 
 </details>
@@ -1113,9 +1085,7 @@ cat /etc/backupgenie/credentials
 # Verify the token online
 curl -H "Authorization: token YOUR_TOKEN" https://api.github.com/user
 
-# Update the token
-nano .env.secrets
-docker compose restart backend
+# Update the token under Settings → Credentials, then test the source again
 ```
 
 </details>
@@ -1130,13 +1100,12 @@ df -h /mnt/backup
 # Find the largest files
 du -sh /mnt/backup/* | sort -rh | head -20
 
-# Clean old backups
-docker exec backupgenie-backend python -m app.cleanup --days 30
+# Review configured retention under Settings → Storage
+# Preview the optional host cleanup script without deleting anything
+sudo DRY_RUN=true ./scripts/backup-cleanup.sh
 ```
 
 </details>
-
-📚 **[More troubleshooting →](docs/TROUBLESHOOTING.md)**
 
 ---
 
@@ -1201,39 +1170,13 @@ sudo ufw status
 ### API token management
 
 ```bash
-# Generate a long-lived API token
-docker exec backupgenie-backend python -c "
-from app.auth import generate_token
-token = generate_token('backup-automation', expires_days=365)
-print(f'Token: {token}')
-"
-
-# Store it securely
-sudo mkdir -p /etc/backupgenie
-echo 'YOUR_TOKEN' | sudo tee /etc/backupgenie/api-token > /dev/null
-sudo chmod 600 /etc/backupgenie/api-token
-sudo chown pi:pi /etc/backupgenie/api-token
+# Interactive, password-bound, maximum lifetime 365 days
+sudo python3 scripts/create-api-token.py
 ```
 
-### Encrypt credentials
-
-```bash
-# Install GPG
-sudo apt install gpg -y
-
-# Encrypt the credentials file
-gpg -c /etc/backupgenie/credentials
-
-# Securely delete the original
-sudo shred -vfz /etc/backupgenie/credentials
-
-# Decrypt in the Docker entrypoint
-gpg --batch --yes --passphrase-file=/run/secrets/gpg_pass \
-    -o /tmp/creds.txt \
-    /etc/backupgenie/credentials.gpg
-```
-
-📚 **[Security best practices →](docs/SECURITY.md)**
+The helper refuses to overwrite an existing token file. Changing the account
+password revokes the token. Source and notification credentials are encrypted in
+the database; keep the same `SECRET_KEY` when moving or restoring an installation.
 
 ---
 
@@ -1252,16 +1195,18 @@ BackupGenie/
 │   │   │   └── auth.py
 │   │   ├── backup/           # Backup engine
 │   │   │   ├── executor.py
-│   │   │   ├── sources/      # 60+ source implementations
+│   │   │   ├── sources/      # Backup handler implementations
 │   │   │   │   ├── smb.py
 │   │   │   │   ├── github.py
 │   │   │   │   ├── rclone.py
 │   │   │   │   └── ...
-│   │   │   └── tasks.py      # Celery tasks
+│   │   │   ├── jobs.py       # Persistent backup queue
+│   │   │   └── worker.py     # Dedicated backup worker
 │   │   ├── models/
 │   │   │   └── backup.py
 │   │   ├── translations/     # i18n translations
 │   │   └── config.py
+│   ├── tests/                 # unittest regression suite
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/
@@ -1275,50 +1220,46 @@ BackupGenie/
 ├── config/
 │   ├── sources.json          # Backup source definitions
 │   ├── rclone.conf          # rclone remote configurations
-│   └── docker-compose.yml
+│   └── sources-example.json
 ├── scripts/
+│   ├── create-api-token.py
 │   ├── trigger-backup.sh
 │   └── backup-cleanup.sh
 ├── docs/
 │   ├── BACKUP_SOURCES.md    # Complete source documentation
-│   ├── API.md               # API reference
 │   ├── i18n.md              # Internationalization guide
-│   └── TROUBLESHOOTING.md
+│   └── SECURITY_AUDIT_LOCAL.md
 └── README.md
 ```
 
 ### Local development setup
 
 ```bash
-# Backend
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+# From the project root, run the backend in its supported container
+export SECRET_KEY="development-secret-at-least-32-characters"
+docker compose up -d --build backend
 
-# Run the backend
-flask run --debug
-
-# Frontend
+# Frontend development server proxies /api to localhost:5000
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
 ### Running tests
 
 ```bash
-# Backend tests
-cd backend
-pytest tests/ -v --cov=app
+# Backend tests with warnings treated as errors
+docker run --rm --entrypoint python backupgenie/backend:latest \
+  -W error -m unittest discover -s tests -p 'test_*.py'
 
-# Frontend tests
+# Frontend checks
 cd frontend
-npm test
+npm ci
+npm run lint
+npm run build
 
-# Integration tests
-docker compose -f docker-compose.test.yml up --abort-on-container-exit
+# Deployment syntax
+SECRET_KEY="validation-secret-at-least-32-characters" docker compose config --quiet
 ```
 
 ### Build Docker images
@@ -1330,11 +1271,8 @@ docker compose build
 # Build a specific service
 docker compose build backend
 
-# Build for ARM (Raspberry Pi)
-docker buildx build --platform linux/arm/v7,linux/arm64 -t backupgenie-backend:latest .
+# The GitHub workflow publishes linux/amd64 and linux/arm64 images
 ```
-
-📚 **[Development guide →](docs/DEVELOPMENT.md)**
 
 ---
 
@@ -1368,7 +1306,7 @@ Contributions are welcome! See the [Contributing Guide](CONTRIBUTING.md) for det
 - [x] Encrypted credential storage (Fernet/PBKDF2)
 - [x] EN/DE multi-language UI
 - [x] Configuration export/import
-- [x] Multi-arch Docker images (amd64, arm64, armv7)
+- [x] Multi-arch Docker images (amd64, arm64)
 
 **In progress / planned**
 - [x] Dark/light theme toggle
@@ -1416,9 +1354,7 @@ Your support keeps this project alive and growing! 🙏
 ### Resources
 
 - 📚 **[Full documentation](docs/)**
-- 🔌 **[API reference](docs/API.md)**
 - 🌐 **[i18n guide](docs/i18n.md)**
-- 🐞 **[Troubleshooting](docs/TROUBLESHOOTING.md)**
 - 🔐 **[Security policy](SECURITY.md)**
 
 ---

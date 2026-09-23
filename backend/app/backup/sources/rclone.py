@@ -49,7 +49,9 @@ class RcloneBackup(BackupHandler):
 
         # Build rclone command with explicit config path
         cmd = [
-            'rclone', 'sync',
+            # Backups must never delete destination files merely because they
+            # disappeared at the source. Retention handles old artifacts.
+            'rclone', 'copy',
             f"{remote}:{remote_path}",
             self.dest_path,
             '--config', Config.RCLONE_CONFIG_PATH,

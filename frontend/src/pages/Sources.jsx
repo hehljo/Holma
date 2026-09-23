@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Plus, Edit2, Trash2, TestTube, Database, Play, Loader2 } from 'lucide-react'
 import { sourcesAPI, backupAPI } from '../services/api'
 import toast from 'react-hot-toast'
@@ -14,18 +14,38 @@ export default function Sources() {
   const [isLoading, setIsLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingSource, setEditingSource] = useState(null)
-  const [isSaving, setIsSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, source: null })
   const [isDeleting, setIsDeleting] = useState(false)
   const [runningSources, setRunningSources] = useState([])
   const [startingSource, setStartingSource] = useState(null)
   const pollRef = useRef(null)
 
+  const loadRunningSources = useCallback(async () => {
+    try {
+      const response = await backupAPI.getRunningSources()
+      setRunningSources(response.data.source_ids || [])
+    } catch (error) {
+      console.error('Error loading running sources:', error)
+    }
+  }, [])
+
+  const loadSources = useCallback(async () => {
+    try {
+      const response = await sourcesAPI.getAll()
+      setSources(response.data.sources)
+      setIsLoading(false)
+    } catch (error) {
+      console.error('Error loading sources:', error)
+      toast.error(t('sources.loadError'))
+      setIsLoading(false)
+    }
+  }, [t])
+
   useEffect(() => {
     loadSources()
     loadRunningSources()
     return () => clearTimeout(pollRef.current)
-  }, [])
+  }, [loadRunningSources, loadSources])
 
   // Poll while something is running so the spinner clears on its own; idle
   // pages stay quiet.
@@ -34,28 +54,7 @@ export default function Sources() {
     if (runningSources.length === 0) return
     pollRef.current = setTimeout(loadRunningSources, 3000)
     return () => clearTimeout(pollRef.current)
-  }, [runningSources])
-
-  const loadRunningSources = async () => {
-    try {
-      const response = await backupAPI.getRunningSources()
-      setRunningSources(response.data.source_ids || [])
-    } catch (error) {
-      console.error('Error loading running sources:', error)
-    }
-  }
-
-  const loadSources = async () => {
-    try {
-      const response = await sourcesAPI.getAll()
-      setSources(response.data.sources)
-      setIsLoading(false)
-    } catch (error) {
-      console.error('Error loading sources:', error)
-      toast.error('Failed to load sources')
-      setIsLoading(false)
-    }
-  }
+  }, [loadRunningSources, runningSources])
 
   const handleDeleteClick = (source) => {
     setDeleteConfirm({ show: true, source })
@@ -67,25 +66,25 @@ export default function Sources() {
     setIsDeleting(true)
     try {
       await sourcesAPI.delete(deleteConfirm.source.id)
-      toast.success(`Source "${deleteConfirm.source.name}" deleted successfully`)
+      toast.success(t('sources.deleted', { name: deleteConfirm.source.name }))
       setDeleteConfirm({ show: false, source: null })
       loadSources()
     } catch (error) {
       console.error('Error deleting source:', error)
-      toast.error(error.response?.data?.error || 'Failed to delete source')
+      toast.error(error.response?.data?.error || t('sources.deleteError'))
     } finally {
       setIsDeleting(false)
     }
   }
 
   const handleTest = async (sourceId) => {
-    const loadingToast = toast.loading('Testing connection...')
+    const loadingToast = toast.loading(t('sources.testing'))
     try {
       const response = await sourcesAPI.test(sourceId)
-      toast.success(response.data.message || 'Connection test successful!', { id: loadingToast })
+      toast.success(response.data.message || t('sources.testSuccess'), { id: loadingToast })
     } catch (error) {
       console.error('Error testing source:', error)
-      toast.error(error.response?.data?.error || 'Connection test failed', { id: loadingToast })
+      toast.error(error.response?.data?.error || t('sources.testError'), { id: loadingToast })
     }
   }
 
@@ -111,15 +110,16 @@ export default function Sources() {
   }
 
   const handleSave = async (sourceData) => {
-    setIsSaving(true)
-    const loadingToast = toast.loading(editingSource ? 'Updating source...' : 'Creating source...')
+    const loadingToast = toast.loading(
+      editingSource ? t('sources.updating') : t('sources.creating')
+    )
     try {
       if (editingSource) {
         await sourcesAPI.update(editingSource.id, sourceData)
-        toast.success('Source updated successfully', { id: loadingToast })
+        toast.success(t('sources.updated'), { id: loadingToast })
       } else {
         await sourcesAPI.create(sourceData)
-        toast.success('Source created successfully', { id: loadingToast })
+        toast.success(t('sources.created'), { id: loadingToast })
       }
       setShowModal(false)
       setEditingSource(null)
@@ -127,12 +127,10 @@ export default function Sources() {
     } catch (error) {
       console.error('Error saving source:', error)
       toast.error(error.response?.data?.error || t('common.error'), { id: loadingToast })
-    } finally {
-      setIsSaving(false)
     }
   }
 
-  const getTypeIcon = (type) => {
+  const getTypeIcon = () => {
     return <Database className="w-5 h-5" />
   }
 
@@ -300,9 +298,9 @@ export default function Sources() {
         isOpen={deleteConfirm.show}
         onClose={() => setDeleteConfirm({ show: false, source: null })}
         onConfirm={handleDeleteConfirm}
-        title="Delete Source?"
-        message={`Are you sure you want to delete "${deleteConfirm.source?.name}"? This action cannot be undone.`}
-        confirmText="Delete Source"
+        title={t('sources.deleteTitle')}
+        message={t('sources.deleteMessage', { name: deleteConfirm.source?.name || '' })}
+        confirmText={t('sources.deleteConfirm')}
         confirmVariant="danger"
         isLoading={isDeleting}
       />

@@ -176,7 +176,7 @@ trigger_backup() {
             -X POST "$API_URL" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $token" \
-            -d '{"trigger": "usb_auto"}' \
+            -d '{}' \
             --connect-timeout 10 \
             --max-time 30 \
             2>&1) || true

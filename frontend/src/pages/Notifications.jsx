@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Bell, Mail, MessageSquare, Send, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useTranslation } from 'react-i18next'
 import { CardGridSkeleton } from '../components/Skeleton'
 import { notificationsAPI } from '../services/api'
+import { useTranslation } from 'react-i18next'
 
 export default function Notifications() {
   const { t } = useTranslation()
@@ -11,11 +11,7 @@ export default function Notifications() {
   const [isLoading, setIsLoading] = useState(true)
   const [isTesting, setIsTesting] = useState({})
 
-  useEffect(() => {
-    loadChannels()
-  }, [])
-
-  const loadChannels = async () => {
+  const loadChannels = useCallback(async () => {
     try {
       const res = await notificationsAPI.getChannels()
       setChannels((res.data.channels || []).map((name) => ({
@@ -28,21 +24,25 @@ export default function Notifications() {
       setIsLoading(false)
     } catch (error) {
       console.error('Error loading channels:', error)
-      toast.error('Failed to load notification channels')
+      toast.error(t('notifications.loadError'))
       setIsLoading(false)
     }
-  }
+  }, [t])
+
+  useEffect(() => {
+    loadChannels()
+  }, [loadChannels])
 
   const handleTest = async (channelId) => {
     setIsTesting({ ...isTesting, [channelId]: true })
-    const loadingToast = toast.loading(`Testing ${channelId}...`)
+    const loadingToast = toast.loading(t('notifications.testing', { channel: channelId }))
 
     try {
       const res = await notificationsAPI.test(channelId)
-      toast.success(res.data.message || `Test notification sent via ${channelId}!`, { id: loadingToast })
+      toast.success(res.data.message || t('notifications.testSent', { channel: channelId }), { id: loadingToast })
     } catch (error) {
       console.error('Error testing channel:', error)
-      toast.error(`Failed to send test notification`, { id: loadingToast })
+      toast.error(t('notifications.testError'), { id: loadingToast })
     } finally {
       setIsTesting({ ...isTesting, [channelId]: false })
     }
@@ -64,14 +64,14 @@ export default function Notifications() {
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
           <CheckCircle className="w-3.5 h-3.5" />
-          Enabled
+          {t('notifications.enabled')}
         </span>
       )
     }
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
         <XCircle className="w-3.5 h-3.5" />
-        Disabled
+        {t('notifications.disabled')}
         </span>
     )
   }
@@ -98,9 +98,9 @@ export default function Notifications() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Notifications</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{t('notifications.title')}</h1>
           <p className="text-sm md:text-base text-gray-600 mt-1">
-            Manage notification channels for backup events
+            {t('notifications.subtitle')}
           </p>
         </div>
       </div>
@@ -110,11 +110,8 @@ export default function Notifications() {
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
           <div className="text-sm text-blue-800">
-            <p className="font-semibold mb-1">Notification Configuration</p>
-            <p>
-              Notification channels are configured via environment variables or config files.
-              Use this page to test your configured channels.
-            </p>
+            <p className="font-semibold mb-1">{t('notifications.configTitle')}</p>
+            <p>{t('notifications.configHint')}</p>
           </div>
         </div>
       </div>
@@ -138,7 +135,7 @@ export default function Notifications() {
 
             {channel.enabled && channel.config && Object.keys(channel.config).length > 0 && (
               <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                <p className="text-xs font-semibold text-gray-700 mb-2">Configuration</p>
+                <p className="text-xs font-semibold text-gray-700 mb-2">{t('notifications.configuration')}</p>
                 <div className="space-y-1">
                   {Object.entries(channel.config).map(([key, value]) => (
                     <div key={key} className="flex justify-between text-xs">
@@ -161,13 +158,13 @@ export default function Notifications() {
                 className="btn btn-secondary w-full flex items-center justify-center gap-2"
               >
                 <Send className="w-4 h-4" />
-                {isTesting[channel.id] ? 'Sending...' : 'Send Test Notification'}
+                {isTesting[channel.id] ? t('notifications.sending') : t('notifications.sendTest')}
               </button>
             )}
 
             {!channel.enabled && (
               <div className="text-center py-4 text-sm text-gray-500">
-                Configure this channel in your environment variables or config file to enable
+                {t('notifications.disabledHint')}
               </div>
             )}
           </div>
@@ -177,10 +174,8 @@ export default function Notifications() {
       {channels.length === 0 && (
         <div className="card text-center py-12">
           <Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">No Notification Channels</h3>
-          <p className="text-gray-600 mb-6">
-            Configure notification channels to receive backup alerts
-          </p>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">{t('notifications.emptyTitle')}</h3>
+          <p className="text-gray-600 mb-6">{t('notifications.emptyHint')}</p>
         </div>
       )}
 

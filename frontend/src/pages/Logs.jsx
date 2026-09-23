@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { FileText, RefreshCw, Trash2, Download, ArrowDown } from 'lucide-react'
 import { settingsAPI } from '../services/api'
 import { useTranslation } from 'react-i18next'
@@ -14,17 +14,7 @@ export default function Logs() {
   const [filter, setFilter] = useState('')
   const logRef = useRef(null)
 
-  useEffect(() => {
-    loadLogs()
-  }, [maxLines])
-
-  useEffect(() => {
-    if (!autoRefresh) return
-    const interval = setInterval(loadLogs, 5000)
-    return () => clearInterval(interval)
-  }, [autoRefresh, maxLines])
-
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     try {
       const response = await settingsAPI.getLogs(maxLines)
       setLogs(response.data.logs)
@@ -34,7 +24,17 @@ export default function Logs() {
       console.error('Error loading logs:', error)
       setIsLoading(false)
     }
-  }
+  }, [maxLines])
+
+  useEffect(() => {
+    loadLogs()
+  }, [loadLogs])
+
+  useEffect(() => {
+    if (!autoRefresh) return
+    const interval = setInterval(loadLogs, 5000)
+    return () => clearInterval(interval)
+  }, [autoRefresh, loadLogs])
 
   const handleClear = async () => {
     if (!window.confirm(t('logs.confirmClear'))) return
@@ -43,7 +43,7 @@ export default function Logs() {
       setLogs('')
       setLineCount(0)
       toast.success(t('logs.cleared'))
-    } catch (error) {
+    } catch (_error) {
       toast.error(t('common.error'))
     }
   }

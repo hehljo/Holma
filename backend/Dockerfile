@@ -2,21 +2,41 @@
 FROM python:3.13-slim
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
-    rsync \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    default-mysql-client \
     git \
     git-lfs \
-    cifs-utils \
-    nfs-common \
-    curl \
-    unzip \
-    ca-certificates \
+    gzip \
+    lftp \
+    openssh-client \
     postgresql-client \
+    redis-tools \
+    rsync \
+    smbclient \
+    sshpass \
+    tar \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install only Docker's authenticated CLI package. The daemon remains on the
+# host and is reached through the explicitly mounted socket.
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg \
+        -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && . /etc/os-release \
+    && printf 'Types: deb\nURIs: https://download.docker.com/linux/debian\nSuites: %s\nComponents: stable\nArchitectures: %s\nSigned-By: /etc/apt/keyrings/docker.asc\n' \
+        "$VERSION_CODENAME" "$(dpkg --print-architecture)" \
+        > /etc/apt/sources.list.d/docker.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
 # Install rclone with version pinning and automatic architecture detection
 # Using official binary distribution for better security
-ARG RCLONE_VERSION=v1.69.1
+ARG RCLONE_VERSION=v1.75.0
 ARG TARGETARCH
 RUN set -x && \
     # Map Docker TARGETARCH to rclone architecture naming

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Archive, Search, RotateCcw, CheckCircle, XCircle, AlertCircle,
   Clock, ChevronDown, ChevronUp, FileText, X, Loader2, Eye, EyeOff,
@@ -9,6 +9,7 @@ import clsx from 'clsx'
 import { formatDistanceToNow, format } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { pollRestoreStatus } from '../services/restorePolling'
 
 const STATUS_ALL = 'all'
 const STATUS_RESTORABLE = 'restorable'
@@ -44,7 +45,7 @@ export default function Backups() {
     try {
       const res = await downloadAPI.listFiles(sourceId)
       setDownloadFiles(res.data.files || [])
-    } catch (e) {
+    } catch (_error) {
       setDownloadFiles([])
     }
     setDownloadLoading(false)
@@ -80,10 +81,9 @@ export default function Backups() {
   const [restoreStatus, setRestoreStatus] = useState(null)
   const [restoreResult, setRestoreResult] = useState(null)
   const [confirmRestore, setConfirmRestore] = useState(false)
+  const restorePollController = useRef(null)
 
-  useEffect(() => { loadBackups() }, [page])
-
-  const loadBackups = async () => {
+  const loadBackups = useCallback(async () => {
     setIsLoading(true)
     try {
       const res = await backupAPI.getHistory(limit, page * limit)
@@ -93,7 +93,10 @@ export default function Backups() {
       console.error(e)
     }
     setIsLoading(false)
-  }
+  }, [page])
+
+  useEffect(() => { loadBackups() }, [loadBackups])
+  useEffect(() => () => restorePollController.current?.abort(), [])
 
   // ── Derived: flatten to source-level rows ──────────────────────────────────
   const rows = []
@@ -161,7 +164,7 @@ export default function Backups() {
         backup_path: backupList[0]?.path || '',
         profile: profiles[0]?.profile || '',
       }))
-    } catch (e) {
+    } catch (_error) {
       setRestoreBackups([])
     }
     setRestoreLoading(false)
@@ -173,23 +176,22 @@ export default function Backups() {
     try {
       const res = await restoreAPI.start(restoreForm)
       const restoreId = res.data.restore_id
-      setRestoreStatus('running')
-
-      const pollInterval = setInterval(async () => {
-        try {
-          const s = await restoreAPI.getStatus(restoreId)
-          const data = s.data
-          if (data.logs) setRestoreResult(prev => ({ ...prev, logs: data.logs }))
-          if (data.status !== 'running') {
-            clearInterval(pollInterval)
-            setRestoreStatus(data.status)
-            setRestoreResult(data)
-          }
-        } catch (_) {}
-      }, 2000)
+      restorePollController.current?.abort()
+      const controller = new AbortController()
+      restorePollController.current = controller
+      const result = await pollRestoreStatus(restoreId, {
+        signal: controller.signal,
+        onUpdate: data => {
+          setRestoreStatus(data.status === 'queued' ? 'starting' : data.status)
+          setRestoreResult(data)
+        },
+      })
+      setRestoreStatus(result.status)
+      setRestoreResult(result)
     } catch (error) {
+      if (error.name === 'CanceledError' || error.name === 'AbortError') return
       setRestoreStatus('failed')
-      setRestoreResult({ error: error.response?.data?.error || 'Restore fehlgeschlagen' })
+      setRestoreResult({ error: error.response?.data?.error || t('restore.genericError') })
     }
   }
 
@@ -368,12 +370,12 @@ export default function Backups() {
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
                           {source ? (
                             <>
-                              <span>{source.files_synced ?? '—'} files</span>
+                              <span>{source.files_synced ?? '—'} {t('backups.files')}</span>
                               <span>{formatBytes(source.size_synced)}</span>
                             </>
                           ) : (
                             <>
-                              <span>{backup.sources_count} sources</span>
+                              <span>{backup.sources_count} {t('backups.sourcesCount')}</span>
                               <span>{formatBytes(backup.total_size)}</span>
                               <span>{formatDuration(backup.duration)}</span>
                             </>
@@ -392,7 +394,7 @@ export default function Backups() {
                               className="btn min-h-9 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 hover:text-emerald-900"
                             >
                               <RotateCcw className="w-3 h-3" />
-                              Restore
+                              {t('restore.action')}
                             </button>
                           )}
 
@@ -402,7 +404,7 @@ export default function Backups() {
                               className="btn min-h-9 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 hover:text-blue-900"
                             >
                               <Download className="w-3 h-3" />
-                              Download
+                              {t('backups.download')}
                             </button>
                           )}
 
@@ -431,7 +433,7 @@ export default function Backups() {
                               {source.logs}
                             </pre>
                           ) : (
-                            <p className="text-xs text-gray-400 italic">No logs</p>
+                            <p className="text-xs text-gray-400 italic">{t('restore.noLogs')}</p>
                           )}
                         </div>
                       )}
@@ -497,7 +499,7 @@ export default function Backups() {
                           className="btn btn-secondary min-h-10 w-full shrink-0 px-3 py-1.5 text-xs sm:w-auto"
                         >
                           <Download className="w-3.5 h-3.5" />
-                          Download
+                          {t('backups.download')}
                         </button>
                       </div>
                     ))}
@@ -517,7 +519,7 @@ export default function Backups() {
             <div className="modal-panel max-w-lg">
               <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 md:px-6 py-4 flex items-center justify-between rounded-t-2xl sm:rounded-t-xl">
                 <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 min-w-0">
-                  <RotateCcw className="w-5 h-5" /> Supabase Restore
+                  <RotateCcw className="w-5 h-5" /> {t('restore.title')}
                 </h2>
                 {!restoreStatus && (
                   <button onClick={() => setRestoreModal(null)} className="icon-btn hover:bg-gray-100" aria-label={t('common.close')}>
@@ -542,14 +544,15 @@ export default function Backups() {
                       {restoreStatus === 'failed' && <XCircle className="w-5 h-5 text-red-600" />}
                       <div>
                         <p className="font-semibold text-gray-900">
-                          {restoreStatus === 'starting' && 'Restore wird gestartet...'}
-                          {restoreStatus === 'running' && 'Restore läuft...'}
-                          {restoreStatus === 'completed' && 'Restore erfolgreich!'}
-                          {restoreStatus === 'partial' && 'Restore teilweise erfolgreich'}
-                          {restoreStatus === 'failed' && 'Restore fehlgeschlagen'}
+                          {t(`restore.${restoreStatus}`)}
                         </p>
                         {restoreResult?.steps_total && (
-                          <p className="text-sm text-gray-600">{restoreResult.steps_completed}/{restoreResult.steps_total} Schritte</p>
+                          <p className="text-sm text-gray-600">
+                            {t('restore.steps', {
+                              completed: restoreResult.steps_completed,
+                              total: restoreResult.steps_total,
+                            })}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -566,7 +569,7 @@ export default function Backups() {
                     )}
                     {['completed', 'partial', 'failed'].includes(restoreStatus) && (
                       <button onClick={() => { setRestoreModal(null); setRestoreStatus(null); setRestoreResult(null) }} className="mt-3 btn btn-secondary text-sm">
-                        Schließen
+                        {t('common.close')}
                       </button>
                     )}
                   </div>
@@ -577,17 +580,17 @@ export default function Backups() {
                   <>
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                       <p className="text-sm text-amber-800">
-                        <strong>⚠️ Achtung:</strong> Restore überschreibt Daten im Ziel-Projekt. Nur auf leere oder Test-Projekte anwenden!
+                        {t('restore.safetyWarning')}
                       </p>
                     </div>
 
                     {/* Backup selection */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Backup auswählen</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{t('restore.selectBackup')}</label>
                       {restoreLoading ? (
-                        <div className="flex items-center gap-2 text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Lade Backups...</div>
+                        <div className="flex items-center gap-2 text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> {t('restore.loadingBackups')}</div>
                       ) : restoreBackups.length === 0 ? (
-                        <p className="text-sm text-gray-500">Keine Backups gefunden</p>
+                        <p className="text-sm text-gray-500">{t('restore.noBackups')}</p>
                       ) : (
                         <select className="input" value={restoreForm.backup_path} onChange={e => setRestoreForm(p => ({ ...p, backup_path: e.target.value }))}>
                           {restoreBackups.map(b => (
@@ -600,30 +603,30 @@ export default function Backups() {
                     {/* Profile / Manual */}
                     {!useManualConnection ? (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Ziel-Profil *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">{t('restore.targetProfile')}</label>
                         {supabaseProfiles.length === 0 ? (
                           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                            <p className="text-sm text-amber-800">Kein Supabase-Profil. Leg eins unter <strong>Settings → Credentials</strong> an.</p>
+                            <p className="text-sm text-amber-800">{t('restore.noProfile')}</p>
                           </div>
                         ) : (
                           <>
                             <select className="input" value={restoreForm.profile} onChange={e => setRestoreForm(p => ({ ...p, profile: e.target.value }))}>
                               {supabaseProfiles.map(p => <option key={p.profile} value={p.profile}>{p.profile}</option>)}
                             </select>
-                            <p className="text-xs text-gray-500 mt-1">Connection String + DB-Passwort kommen aus dem Profil.</p>
+                            <p className="text-xs text-gray-500 mt-1">{t('restore.profileHint')}</p>
                           </>
                         )}
                         <button type="button" onClick={() => setUseManualConnection(true)} className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline">
-                          Manuell Connection String eingeben
+                          {t('restore.manualConnection')}
                         </button>
                       </div>
                     ) : (
                       <>
                         <div>
                           <div className="flex items-center justify-between mb-2">
-                            <label className="block text-sm font-medium text-gray-700">Ziel Connection String *</label>
+                            <label className="block text-sm font-medium text-gray-700">{t('restore.connectionString')}</label>
                             <button type="button" onClick={() => setUseManualConnection(false)} className="text-xs text-blue-600 hover:text-blue-800 underline">
-                              Profil verwenden
+                              {t('restore.useProfile')}
                             </button>
                           </div>
                           <input type="text" className="input font-mono text-sm" value={restoreForm.target_connection_string}
@@ -631,11 +634,11 @@ export default function Backups() {
                             placeholder="postgresql://postgres.xxxxx:[YOUR-PASSWORD]@..." />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Ziel-DB Password</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">{t('restore.dbPassword')}</label>
                           <div className="relative">
                             <input type={showRestorePassword ? 'text' : 'password'} className="input pr-10"
                               value={restoreForm.target_db_password} onChange={e => setRestoreForm(p => ({ ...p, target_db_password: e.target.value }))}
-                              placeholder="Wird in [YOUR-PASSWORD] eingesetzt" />
+                              placeholder={t('restore.dbPasswordPlaceholder')} />
                             <button type="button" onClick={() => setShowRestorePassword(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500">
                               {showRestorePassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                             </button>
@@ -648,13 +651,13 @@ export default function Backups() {
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                         checked={restoreForm.restore_storage} onChange={e => setRestoreForm(p => ({ ...p, restore_storage: e.target.checked }))} />
-                      <span className="text-sm text-gray-700">Storage-Objekte wiederherstellen</span>
+                      <span className="text-sm text-gray-700">{t('restore.storage')}</span>
                     </label>
 
                     {/* Service key — only manual mode */}
                     {restoreForm.restore_storage && useManualConnection && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Ziel-Service Role Key</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">{t('restore.serviceRoleKey')}</label>
                         <div className="relative">
                           <input type={showServiceKey ? 'text' : 'password'} className="input pr-10"
                             value={restoreForm.target_service_role_key} onChange={e => setRestoreForm(p => ({ ...p, target_service_role_key: e.target.value }))}
@@ -668,13 +671,13 @@ export default function Backups() {
 
                     {/* Actions */}
                     <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
-                      <button onClick={() => setRestoreModal(null)} className="btn btn-secondary flex-1">Abbrechen</button>
+                      <button onClick={() => setRestoreModal(null)} className="btn btn-secondary flex-1">{t('common.cancel')}</button>
                       <button
                         onClick={() => setConfirmRestore(true)}
                         disabled={!restoreForm.backup_path || (useManualConnection ? !restoreForm.target_connection_string : !restoreForm.profile)}
                         className="btn btn-primary flex-1 disabled:opacity-50"
                       >
-                        <RotateCcw className="w-4 h-4 mr-2" /> Restore starten
+                        <RotateCcw className="w-4 h-4 mr-2" /> {t('restore.start')}
                       </button>
                     </div>
                   </>
@@ -687,10 +690,10 @@ export default function Backups() {
 
       <ConfirmDialog
         isOpen={confirmRestore}
-        title="Restore bestätigen"
-        message={`Daten werden auf das Ziel-Projekt wiederhergestellt. ${restoreForm.restore_storage ? 'Storage-Objekte werden ebenfalls überschrieben!' : ''} Fortfahren?`}
-        confirmText="Ja, Restore starten"
-        cancelText="Abbrechen"
+        title={t('restore.confirmTitle')}
+        message={`${t('restore.confirmMessage')} ${restoreForm.restore_storage ? t('restore.storageWarning') : ''} ${t('restore.confirmContinue')}`}
+        confirmText={t('restore.confirmStart')}
+        cancelText={t('common.cancel')}
         onConfirm={handleRestore}
         onClose={() => setConfirmRestore(false)}
         confirmVariant="danger"

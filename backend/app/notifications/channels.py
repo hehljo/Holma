@@ -2,6 +2,7 @@
 Notification channel implementations
 """
 import logging
+from app.time_utils import utc_iso_z
 import requests
 import smtplib
 from email.mime.text import MIMEText
@@ -14,6 +15,15 @@ from .base import NotificationChannel, NotificationPriority, NotificationType
 logger = logging.getLogger(__name__)
 
 
+def _stored_credential(name):
+    """Read UI-managed credentials when a channel is built in app context."""
+    try:
+        from app.api.settings import get_credential
+        return get_credential(name)
+    except RuntimeError:
+        return ''
+
+
 class EmailNotification(NotificationChannel):
     """Email notification channel using SMTP"""
 
@@ -22,7 +32,11 @@ class EmailNotification(NotificationChannel):
         self.smtp_host = config.get('smtp_host') or os.getenv('SMTP_HOST')
         self.smtp_port = config.get('smtp_port', 587) or int(os.getenv('SMTP_PORT', '587'))
         self.smtp_user = config.get('smtp_user') or os.getenv('SMTP_USER')
-        self.smtp_password = config.get('smtp_password') or os.getenv('SMTP_PASSWORD')
+        self.smtp_password = (
+            _stored_credential('smtp_password')
+            or config.get('smtp_password')
+            or os.getenv('SMTP_PASSWORD')
+        )
         self.from_email = config.get('from_email') or os.getenv('SMTP_FROM')
         self.to_emails = config.get('to_emails', [])
         self.use_tls = config.get('use_tls', True)
@@ -80,7 +94,7 @@ class EmailNotification(NotificationChannel):
             return True
 
         except Exception as e:
-            logger.error(f"Failed to send email: {e}")
+            logger.error('Failed to send email: %s', type(e).__name__)
             return False
 
     def _format_html(self, title: str, message: str, notification_type: NotificationType) -> str:
@@ -160,11 +174,11 @@ class WebhookNotification(NotificationChannel):
                 logger.info(f"Webhook notification sent successfully")
                 return True
             else:
-                logger.error(f"Webhook returned status {response.status_code}: {response.text}")
+                logger.error('Webhook returned status %s', response.status_code)
                 return False
 
         except Exception as e:
-            logger.error(f"Failed to send webhook: {e}")
+            logger.error('Failed to send webhook: %s', type(e).__name__)
             return False
 
     def _format_payload(self, title: str, message: str, notification_type: NotificationType, data: Optional[Dict]) -> Dict:
@@ -193,7 +207,7 @@ class WebhookNotification(NotificationChannel):
                 "title": title,
                 "description": message,
                 "color": color,
-                "timestamp": __import__('datetime').datetime.utcnow().isoformat(),
+                "timestamp": utc_iso_z(),
                 "footer": {
                     "text": "BackupGenie",
                     "icon_url": "https://raw.githubusercontent.com/hehljo/BackupGenie/main/assets/icon.png"
@@ -234,7 +248,7 @@ class WebhookNotification(NotificationChannel):
             "title": title,
             "message": message,
             "type": notification_type.value,
-            "timestamp": __import__('datetime').datetime.utcnow().isoformat(),
+            "timestamp": utc_iso_z(),
             "data": data or {}
         }
 
@@ -244,7 +258,11 @@ class TelegramNotification(NotificationChannel):
 
     def __init__(self, config: Dict):
         super().__init__(config)
-        self.bot_token = config.get('bot_token') or os.getenv('TELEGRAM_BOT_TOKEN')
+        self.bot_token = (
+            _stored_credential('telegram_bot_token')
+            or config.get('bot_token')
+            or os.getenv('TELEGRAM_BOT_TOKEN')
+        )
         self.chat_ids = config.get('chat_ids', [])
         self.parse_mode = config.get('parse_mode', 'Markdown')  # HTML or Markdown
 
@@ -283,7 +301,7 @@ class TelegramNotification(NotificationChannel):
                 if response.status_code == 200:
                     success_count += 1
                 else:
-                    logger.error(f"Telegram API error for chat {chat_id}: {response.text}")
+                    logger.error('Telegram API error: HTTP %s', response.status_code)
 
             if success_count > 0:
                 logger.info(f"Telegram notification sent to {success_count}/{len(self.chat_ids)} chat(s)")
@@ -291,7 +309,7 @@ class TelegramNotification(NotificationChannel):
             return False
 
         except Exception as e:
-            logger.error(f"Failed to send Telegram notification: {e}")
+            logger.error('Failed to send Telegram notification: %s', type(e).__name__)
             return False
 
 
@@ -350,11 +368,11 @@ class NtfyNotification(NotificationChannel):
                 logger.info(f"ntfy notification sent to topic '{self.topic}'")
                 return True
             else:
-                logger.error(f"ntfy error: {response.status_code} - {response.text}")
+                logger.error('ntfy returned status %s', response.status_code)
                 return False
 
         except Exception as e:
-            logger.error(f"Failed to send ntfy notification: {e}")
+            logger.error('Failed to send ntfy notification: %s', type(e).__name__)
             return False
 
     def _get_tags(self, notification_type: NotificationType) -> str:
@@ -440,5 +458,5 @@ class AppriseNotification(NotificationChannel):
                 return False
 
         except Exception as e:
-            logger.error(f"Failed to send Apprise notification: {e}")
+            logger.error('Failed to send Apprise notification: %s', type(e).__name__)
             return False

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Settings as SettingsIcon, User, Shield, Database, Save, Loader, Download, Upload, FileJson, CheckCircle, AlertCircle, Key, Eye, EyeOff, Plus, Trash2, X, Clock, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { authAPI, backupAPI, settingsAPI, configAPI, sourcesAPI } from '../services/api'
@@ -6,7 +6,8 @@ import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { FormSkeleton } from '../components/Skeleton'
 import ConfirmDialog from '../components/ConfirmDialog'
-import ScheduleFields, { DEFAULT_SCHEDULE } from '../components/ScheduleFields'
+import ScheduleFields from '../components/ScheduleFields'
+import { DEFAULT_SCHEDULE } from '../components/schedule'
 
 // Providers whose credentials can be verified against a live API
 const TESTABLE_PROVIDERS = ['github', 'telegram']
@@ -38,6 +39,7 @@ export default function Settings() {
 
   // Password Change
   const [passwords, setPasswords] = useState({
+    currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   })
@@ -71,11 +73,7 @@ export default function Settings() {
   const [clearBackupsConfirm, setClearBackupsConfirm] = useState(false)
   const [isClearing, setIsClearing] = useState(false)
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       // Load user info
       const userRes = await authAPI.getCurrentUser()
@@ -127,21 +125,31 @@ export default function Settings() {
       toast.error(t('settings.loadError'))
       setIsLoading(false)
     }
-  }
+  }, [t])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const providerLabels = {
     github: {
       label: 'GitHub',
       icon: '🔑',
       fields: {
-        token: { label: 'Access Token', hint: 'Personal Access Token (Scopes: repo, gist)' }
+        token: {
+          label: t('credentialFields.accessToken'),
+          hint: t('credentialFields.accessTokenHint')
+        }
       }
     },
     nas: {
       label: 'NAS / SMB',
       icon: '💾',
       fields: {
-        password: { label: 'Passwort', hint: 'SMB/NFS Zugangspasswort' }
+        password: {
+          label: t('credentialFields.password'),
+          hint: t('credentialFields.nasPasswordHint')
+        }
       }
     },
     supabase: {
@@ -149,33 +157,48 @@ export default function Settings() {
       icon: '⚡',
       fields: {
         connection_string: {
-          label: 'Connection String (Session Pooler)',
+          label: t('credentialFields.connectionString'),
           hint: 'postgresql://postgres.xxxxx:[YOUR-PASSWORD]@aws-1-eu-north-1.pooler.supabase.com:5432/postgres',
-          help: 'Im Supabase Dashboard auf "Connect" → Tab "Session Pooler" → URI kopieren. Das Passwort darin als [YOUR-PASSWORD] lassen — wird automatisch eingesetzt.'
+          help: t('credentialFields.connectionHelp')
         },
-        db_password: { label: 'DB Passwort', hint: 'Datenbank-Passwort aus dem Supabase Dashboard (ersetzt [YOUR-PASSWORD] im Connection String)' },
-        service_role_key: { label: 'Service Role Key (optional)', hint: 'Nur für Storage-Restore notwendig' }
+        db_password: {
+          label: t('credentialFields.dbPassword'),
+          hint: t('credentialFields.dbPasswordHint')
+        },
+        service_role_key: {
+          label: t('credentialFields.serviceRoleKey'),
+          hint: t('credentialFields.serviceRoleHint')
+        }
       }
     },
     smtp: {
       label: 'SMTP / E-Mail',
       icon: '📧',
       fields: {
-        password: { label: 'Passwort', hint: 'E-Mail-Benachrichtigungspasswort' }
+        password: {
+          label: t('credentialFields.password'),
+          hint: t('credentialFields.emailPasswordHint')
+        }
       }
     },
     telegram: {
       label: 'Telegram',
       icon: '📱',
       fields: {
-        bot_token: { label: 'Bot Token', hint: 'Von @BotFather' }
+        bot_token: {
+          label: t('credentialFields.botToken'),
+          hint: t('credentialFields.botTokenHint')
+        }
       }
     },
     gdrive: {
       label: 'Google Drive',
       icon: '☁️',
       fields: {
-        token: { label: 'OAuth Token', hint: 'rclone OAuth Token für Google Drive' }
+        token: {
+          label: t('credentialFields.oauthToken'),
+          hint: t('credentialFields.oauthTokenHint')
+        }
       }
     },
   }
@@ -258,10 +281,13 @@ export default function Settings() {
     setIsSaving(true)
     try {
       // Call real API endpoint
-      await authAPI.changePassword(passwords.newPassword)
+      const response = await authAPI.changePassword(passwords.currentPassword, passwords.newPassword)
+      if (response.data?.access_token) {
+        localStorage.setItem('token', response.data.access_token)
+      }
       toast.success(t('settings.password.changed'))
       setPasswordSuccess(true)
-      setPasswords({ newPassword: '', confirmPassword: '' })
+      setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' })
       setTimeout(() => setPasswordSuccess(false), 5000)
     } catch (error) {
       console.error('Error changing password:', error)
@@ -579,6 +605,10 @@ export default function Settings() {
               <input type="text" className="input" value={user?.username || 'admin'} disabled />
             </div>
             <div>
+              <label className="block text-xs md:text-sm font-medium text-gray-700 mb-2">{t('settings.currentPassword')}</label>
+              <input type="password" autoComplete="current-password" className="input" placeholder={t('settings.currentPassword')} value={passwords.currentPassword} onChange={(e) => setPasswords({...passwords, currentPassword: e.target.value})} />
+            </div>
+            <div>
               <label className="block text-xs md:text-sm font-medium text-gray-700 mb-2">{t('settings.newPassword')}</label>
               <input type="password" autoComplete="new-password" className="input" placeholder={t('settings.newPassword')} value={passwords.newPassword} onChange={(e) => setPasswords({...passwords, newPassword: e.target.value})} />
             </div>
@@ -588,7 +618,7 @@ export default function Settings() {
             </div>
             {passwordError && <p className="text-xs md:text-sm text-red-600">{passwordError}</p>}
             {passwordSuccess && <p className="text-xs md:text-sm text-green-600">{t('settings.password.changed')}</p>}
-            <button type="submit" className="btn btn-primary w-full flex items-center justify-center gap-2" disabled={isSaving || !passwords.newPassword || !passwords.confirmPassword}>
+            <button type="submit" className="btn btn-primary w-full flex items-center justify-center gap-2" disabled={isSaving || !passwords.currentPassword || !passwords.newPassword || !passwords.confirmPassword}>
               {isSaving ? <><Loader className="w-4 h-4 md:w-5 md:h-5 animate-spin" /><span className="text-sm md:text-base">{t('settings.saving')}</span></> : <span className="text-sm md:text-base">{t('settings.save')}</span>}
             </button>
           </form>

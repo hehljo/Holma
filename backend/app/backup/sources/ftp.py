@@ -6,6 +6,7 @@ import subprocess
 import logging
 import os
 import shlex
+import re
 from app.backup.base import BackupHandler
 
 logger = logging.getLogger(__name__)
@@ -84,8 +85,10 @@ class FTPBackup(BackupHandler):
             if result.stdout:
                 self.log(result.stdout)
 
-            if result.returncode != 0 and result.stderr:
-                self.log(f"WARNING: {result.stderr}")
+            if result.returncode != 0:
+                raise Exception(
+                    f"lftp failed with code {result.returncode}: {result.stderr[:500]}"
+                )
 
             # Calculate backup size
             size = self._get_directory_size(self.dest_path)
@@ -123,6 +126,12 @@ class SFTPBackup(BackupHandler):
 
         # Get credentials
         username = self.source_config.get('username') or self._get_env_credential(credentials.get('username_env', 'SFTP_USER'))
+        if not isinstance(username, str) or not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', username):
+            raise Exception("Invalid SFTP username")
+        if not isinstance(host, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,253}', host):
+            raise Exception("Invalid SFTP host")
+        if not isinstance(remote_path, str) or any(c in remote_path for c in ('\0', '\n', '\r')):
+            raise Exception("Invalid SFTP path")
 
         # Check for SSH key or password
         ssh_key = self.source_config.get('ssh_key_path') or credentials.get('ssh_key_path', '')
@@ -133,7 +142,8 @@ class SFTPBackup(BackupHandler):
             self.log(f"Starting SFTP backup from {host}:{remote_path}")
 
             # Build rsync command as array (no shell interpretation)
-            cmd = ['rsync', '-avz', '--stats']
+            cmd = ['rsync', '-avz', '--stats', '--protect-args']
+            process_env = os.environ.copy()
 
             options = self.source_config.get('options', {})
 
@@ -153,9 +163,9 @@ class SFTPBackup(BackupHandler):
                 if not password:
                     password = self._get_env_credential(password_env)
                 cmd = ['sshpass', '-e'] + cmd
-                os.environ['SSHPASS'] = password
+                process_env['SSHPASS'] = password
 
-            cmd.extend(['-e', ' '.join(ssh_cmd)])
+            cmd.extend(['-e', shlex.join(ssh_cmd)])
 
             # Add source and destination
             source = f"{username}@{host}:{remote_path}"
@@ -166,11 +176,9 @@ class SFTPBackup(BackupHandler):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=3600
+                timeout=3600,
+                env=process_env,
             )
-
-            # Clean up SSHPASS from environment
-            os.environ.pop('SSHPASS', None)
 
             if result.stdout:
                 self.log(result.stdout)
@@ -207,6 +215,5 @@ class SFTPBackup(BackupHandler):
             self.log("ERROR: SFTP backup timeout")
             raise Exception("SFTP backup timeout")
         except Exception as e:
-            os.environ.pop('SSHPASS', None)
             self.log(f"ERROR: SFTP backup failed")
             raise

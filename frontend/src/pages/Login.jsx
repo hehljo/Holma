@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { HardDrive, AlertCircle } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { authAPI } from '../services/api'
 import { useTranslation } from 'react-i18next'
 import LanguageSwitcher from '../components/LanguageSwitcher'
+import PropTypes from 'prop-types'
 
 export default function Login({ onLogin }) {
   const { t } = useTranslation()
@@ -37,8 +38,7 @@ export default function Login({ onLogin }) {
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <img src="/icon.png" alt="BackupGenie" className="w-20 h-20 rounded-2xl mb-4 shadow-md" />
-          <h1 className="text-3xl font-bold text-gray-900">{t('app.name')}</h1>
+          <img src="/logo-wordmark.png" alt={t('app.name')} className="h-auto w-72 max-w-full mb-4" />
           <p className="text-gray-600 mt-2">{t('app.tagline')}</p>
         </div>
 
@@ -100,4 +100,8 @@ export default function Login({ onLogin }) {
       </div>
     </div>
   )
+}
+
+Login.propTypes = {
+  onLogin: PropTypes.func.isRequired,
 }

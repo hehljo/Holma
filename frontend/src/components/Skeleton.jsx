@@ -3,6 +3,7 @@
  * Modern loading skeletons for better UX (Nov 2025 best practice)
  */
 import clsx from 'clsx'
+import PropTypes from 'prop-types'
 
 // Base Skeleton component
 export function Skeleton({ className, ...props }) {
@@ -114,6 +115,18 @@ export function StatsGridSkeleton({ count = 4 }) {
       ))}
     </div>
   )
+}
+
+Skeleton.propTypes = {
+  className: PropTypes.string,
+}
+
+CardGridSkeleton.propTypes = {
+  count: PropTypes.number,
+}
+
+StatsGridSkeleton.propTypes = {
+  count: PropTypes.number,
 }
 
 export default Skeleton

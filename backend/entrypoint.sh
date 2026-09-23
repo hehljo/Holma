@@ -23,8 +23,13 @@ fi
 echo ""
 echo "Starting BackupGenie backend..."
 
-# Backup scheduler runs as a single process next to gunicorn, so scheduled
-# backups fire exactly once no matter how many workers are running.
+# Backups run only in this dedicated process. API workers merely enqueue jobs,
+# so gunicorn worker restarts cannot lose an active job or break stop requests.
+python -m app.backup.worker &
+JOB_WORKER_PID=$!
+echo "  Backup worker started (pid $JOB_WORKER_PID)"
+
+# The scheduler also only queues jobs and runs once per container.
 SCHEDULER_PID=""
 if [ "${SCHEDULER_ENABLED:-true}" = "true" ]; then
     python -m app.scheduler.runner &
@@ -41,6 +46,9 @@ shutdown() {
     if [ -n "$GUNICORN_PID" ]; then
         kill "$GUNICORN_PID" 2>/dev/null || true
     fi
+    if [ -n "$JOB_WORKER_PID" ]; then
+        kill "$JOB_WORKER_PID" 2>/dev/null || true
+    fi
 }
 trap shutdown TERM INT
 
@@ -51,8 +59,16 @@ gunicorn \
     run:app &
 GUNICORN_PID=$!
 
-# Exit when gunicorn does; the scheduler is torn down by the trap.
-wait "$GUNICORN_PID"
+# Exit and let the container restart if any required process dies.
+PIDS=("$JOB_WORKER_PID" "$GUNICORN_PID")
+if [ -n "$SCHEDULER_PID" ]; then
+    PIDS+=("$SCHEDULER_PID")
+fi
+
+set +e
+wait -n "${PIDS[@]}"
 EXIT_CODE=$?
+set -e
 shutdown
+wait "${PIDS[@]}" 2>/dev/null || true
 exit "$EXIT_CODE"

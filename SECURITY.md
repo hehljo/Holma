@@ -6,8 +6,8 @@ Only the latest minor release receives security updates.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.5.x   | :white_check_mark: |
-| < 1.5   | :x:                |
+| 1.7.x   | :white_check_mark: |
+| < 1.7   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -51,16 +51,16 @@ Out of scope:
 - Issues requiring physical access to the host
 - Vulnerabilities in third-party dependencies (please report upstream)
 - Self-XSS or social engineering attacks
-- Brute force attacks against unrate-limited endpoints (already documented)
 
 ## Security Best Practices
 
 When deploying BackupGenie:
 
-1. **Always set a strong `SECRET_KEY`** (32+ random bytes)
+1. **Always set a strong `SECRET_KEY`** (generate it with the documented command and keep it unchanged)
 2. **Change the default admin password** immediately after first login
 3. **Restrict network access** to the API/UI to trusted networks (firewall rules)
 4. **Use HTTPS** in production (reverse proxy with valid TLS cert)
 5. **Keep credentials in the encrypted store** (Settings → Credentials), not in env vars or sources.json
 6. **Regularly update** to the latest release
 7. **Review backup target permissions** (filesystem ACLs, S3 bucket policies, etc.)
+8. **Expose the Docker socket only when Docker backups are required**; a read-only bind mount does not make the Docker API read-only

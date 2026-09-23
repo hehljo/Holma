@@ -7,14 +7,20 @@ from flask import Blueprint, request, jsonify
 import logging
 import shutil
 import os
+import re
 import subprocess
 
 import requests
 
 from app import db, limiter
-from app.api.auth import token_required
+from app.api.auth import admin_required
 from app.config import Config
 from app.models.backup import Setting
+from app.runtime_settings import (
+    backup_root_path,
+    get_setting,
+    validate_backup_base_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,26 +35,74 @@ CONFIGURABLE_SETTINGS = {
     'auto_cleanup': {'type': 'bool', 'default': True},
 }
 
+PROFILE_NAME_RE = re.compile(r'^[a-z0-9][a-z0-9_-]{0,49}$')
 
-def get_setting(key, default=None):
-    """Get setting from DB, fall back to env, then default"""
-    db_val = Setting.get(key)
-    if db_val is not None:
-        return db_val
-    # Env fallback
-    env_map = {
-        'backup_base_path': 'BACKUP_BASE_PATH',
-        'max_parallel_tasks': 'MAX_PARALLEL_TASKS',
-        'log_retention_days': 'LOG_RETENTION_DAYS',
-        'backup_retention_count': 'BACKUP_RETENTION_COUNT',
-        'auto_cleanup': 'AUTO_CLEANUP',
-    }
-    env_key = env_map.get(key)
-    if env_key:
-        env_val = os.environ.get(env_key)
-        if env_val:
-            return env_val
-    return default
+
+def normalize_settings(values):
+    """Validate a settings payload completely before anything is persisted."""
+    if not isinstance(values, dict):
+        raise ValueError('Settings must be an object')
+
+    normalized = {}
+    for key, meta in CONFIGURABLE_SETTINGS.items():
+        if key not in values:
+            continue
+        value = values[key]
+        if meta['type'] == 'int':
+            try:
+                value = int(value)
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f'{key} must be a number') from exc
+            if 'min' in meta and value < meta['min']:
+                raise ValueError(f'{key} must be at least {meta["min"]}')
+            if 'max' in meta and value > meta['max']:
+                raise ValueError(f'{key} must be at most {meta["max"]}')
+        elif meta['type'] == 'bool':
+            if isinstance(value, bool):
+                pass
+            elif str(value).lower() in ('true', '1', 'yes', 'on'):
+                value = True
+            elif str(value).lower() in ('false', '0', 'no', 'off'):
+                value = False
+            else:
+                raise ValueError(f'{key} must be a boolean')
+        elif key == 'backup_base_path':
+            value = validate_backup_base_path(value)
+        normalized[key] = str(value)
+    return normalized
+
+
+def stage_settings(normalized):
+    """Stage validated settings in the current DB transaction."""
+    for key, value in normalized.items():
+        setting = Setting.query.filter_by(key=key).first()
+        if setting:
+            setting.value = value
+        else:
+            db.session.add(Setting(key=key, value=value))
+
+
+def apply_runtime_settings(normalized):
+    """Apply settings that affect already-created process resources."""
+    if 'log_retention_days' in normalized:
+        from logging.handlers import TimedRotatingFileHandler
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, TimedRotatingFileHandler):
+                handler.backupCount = int(normalized['log_retention_days'])
+
+
+def _store_credentials_atomic(values):
+    """Encrypt and stage credential key/value pairs in one transaction."""
+    from app.crypto import encrypt_value
+
+    for key, value in values.items():
+        setting = Setting.query.filter_by(key=key).first()
+        encrypted = encrypt_value(value)
+        if setting:
+            setting.value = encrypted
+        else:
+            db.session.add(Setting(key=key, value=encrypted))
+    db.session.commit()
 
 
 def get_credential(name, profile=None):
@@ -173,10 +227,10 @@ def get_provider_profiles(provider):
 
 
 @settings_bp.route('', methods=['GET'])
-@token_required
+@admin_required
 def get_settings(current_user):
     """Get current system settings with real storage stats"""
-    backup_path = get_setting('backup_base_path', Config.BACKUP_BASE_PATH)
+    backup_path = backup_root_path()
 
     try:
         stat = shutil.disk_usage(backup_path)
@@ -210,40 +264,32 @@ def get_settings(current_user):
 
 
 @settings_bp.route('', methods=['PUT'])
-@token_required
+@admin_required
 def update_settings(current_user):
     """Update system settings - persisted in database"""
     data = request.get_json()
 
-    if not data:
+    if not isinstance(data, dict) or not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    updated = []
+    try:
+        normalized = normalize_settings(data)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
 
-    for key, meta in CONFIGURABLE_SETTINGS.items():
-        if key not in data:
-            continue
+    try:
+        stage_settings(normalized)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.exception('Settings update failed')
+        return jsonify({'error': 'Settings update failed'}), 500
 
-        value = data[key]
-
-        if meta['type'] == 'int':
-            try:
-                value = int(value)
-                if 'min' in meta and value < meta['min']:
-                    return jsonify({'error': f'{key} must be at least {meta["min"]}'}), 400
-                if 'max' in meta and value > meta['max']:
-                    return jsonify({'error': f'{key} must be at most {meta["max"]}'}), 400
-            except (ValueError, TypeError):
-                return jsonify({'error': f'{key} must be a number'}), 400
-        elif meta['type'] == 'bool':
-            value = str(value).lower() in ('true', '1', 'yes', 'on')
-
-        Setting.set(key, str(value))
-        updated.append(key)
+    apply_runtime_settings(normalized)
 
     return jsonify({
         'message': 'Settings updated successfully',
-        'updated': updated
+        'updated': list(normalized)
     }), 200
 
 
@@ -292,7 +338,7 @@ CREDENTIAL_TYPES = [
 
 
 @settings_bp.route('/credentials', methods=['GET'])
-@token_required
+@admin_required
 def get_credentials(current_user):
     """Get all credential providers with their profiles (never returns actual values)"""
     credentials = {}
@@ -308,21 +354,29 @@ def get_credentials(current_user):
 
 
 @settings_bp.route('/credentials', methods=['PUT'])
-@token_required
+@admin_required
 def update_credentials(current_user):
     """Legacy: Update credentials with flat key-value format"""
     data = request.get_json()
 
-    if not data:
+    if not isinstance(data, dict) or not data:
         return jsonify({'error': 'No data provided'}), 400
 
+    pending = {}
     updated = []
     for key, value in data.items():
         if key not in CREDENTIAL_TYPES:
             continue
         if isinstance(value, str) and value.strip():
-            Setting.set(f'credential.{key}', value.strip())
+            pending[f'credential.{key}'] = value.strip()
             updated.append(key)
+
+    try:
+        _store_credentials_atomic(pending)
+    except Exception:
+        db.session.rollback()
+        logger.exception('Credential update failed')
+        return jsonify({'error': 'Credentials could not be saved'}), 500
 
     return jsonify({
         'message': 'Credentials updated',
@@ -331,10 +385,10 @@ def update_credentials(current_user):
 
 
 @settings_bp.route('/credentials/profile', methods=['POST'])
-@token_required
+@admin_required
 def add_credential_profile(current_user):
     """Add or update a credential profile for a provider"""
-    data = request.get_json()
+    data = request.get_json() or {}
     provider = data.get('provider', '').strip()
     profile = data.get('profile', '').strip()
     values = data.get('values', {})
@@ -343,26 +397,35 @@ def add_credential_profile(current_user):
         return jsonify({'error': 'Invalid provider'}), 400
     if not profile:
         return jsonify({'error': 'Profile name is required'}), 400
-    if not values:
+    if not isinstance(values, dict) or not values:
         return jsonify({'error': 'At least one field value is required'}), 400
 
     meta = CREDENTIAL_PROVIDERS[provider]
 
-    # Sanitize profile name
     profile = profile.lower().replace(' ', '_')
-    if len(profile) > 50:
-        return jsonify({'error': 'Profile name too long (max 50 chars)'}), 400
+    if not PROFILE_NAME_RE.fullmatch(profile):
+        return jsonify({
+            'error': 'Profile name may only contain letters, numbers, _ and -'
+        }), 400
 
+    pending = {}
     saved_fields = []
     for field, value in values.items():
         if field not in meta['fields']:
             continue
-        if value and value.strip():
-            Setting.set(f'credential.{provider}.{field}.{profile}', value.strip())
+        if isinstance(value, str) and value.strip():
+            pending[f'credential.{provider}.{field}.{profile}'] = value.strip()
             saved_fields.append(field)
 
     if not saved_fields:
         return jsonify({'error': 'No valid fields provided'}), 400
+
+    try:
+        _store_credentials_atomic(pending)
+    except Exception:
+        db.session.rollback()
+        logger.exception('Credential profile update failed')
+        return jsonify({'error': 'Credential profile could not be saved'}), 500
 
     return jsonify({
         'message': f'Profile "{profile}" saved for {provider}',
@@ -417,7 +480,7 @@ def _test_telegram_token(token):
 
 
 @settings_bp.route('/credentials/test', methods=['POST'])
-@token_required
+@admin_required
 @limiter.limit("20 per hour")
 def test_credential(current_user):
     """Test a stored credential against the provider's API.
@@ -472,10 +535,10 @@ def test_credential(current_user):
 
 
 @settings_bp.route('/credentials/profile', methods=['DELETE'])
-@token_required
+@admin_required
 def delete_credential_profile(current_user):
     """Delete a credential profile (all fields)"""
-    data = request.get_json()
+    data = request.get_json() or {}
     provider = data.get('provider', '').strip()
     profile = data.get('profile', '').strip()
 
@@ -483,6 +546,8 @@ def delete_credential_profile(current_user):
         return jsonify({'error': 'Invalid provider'}), 400
     if not profile:
         return jsonify({'error': 'Profile name is required'}), 400
+    if not PROFILE_NAME_RE.fullmatch(profile):
+        return jsonify({'error': 'Invalid profile name'}), 400
 
     meta = CREDENTIAL_PROVIDERS[provider]
     deleted = 0
@@ -513,7 +578,7 @@ def delete_credential_profile(current_user):
 # --- System Logs ---
 
 @settings_bp.route('/logs', methods=['GET'])
-@token_required
+@admin_required
 def get_logs(current_user):
     """Get system log file contents"""
     lines = request.args.get('lines', 200, type=int)
@@ -541,7 +606,7 @@ def get_logs(current_user):
 
 
 @settings_bp.route('/logs/clear', methods=['POST'])
-@token_required
+@admin_required
 def clear_logs(current_user):
     """Clear the log file"""
     log_file = Config.LOG_FILE

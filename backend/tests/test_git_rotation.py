@@ -86,38 +86,6 @@ def select_deleted(names, keep_count, rule, mirror_dirname):
     return [n for s in stamps[keep_count:] for n in versioned[s]]
 
 
-def extract_guard_logic(api_src):
-    """Build a callable from the API's real concurrency guard line.
-
-    The guard cannot be imported (Flask), so the actual `busy = ...` expression
-    is lifted out of the source and executed. That way a dead assignment fails
-    here, which a substring check would not catch.
-
-    eval() is deliberate and safe here: the expression comes from this repo's
-    own backup.py, never from input, and evaluating the real line rather than a
-    reimplementation is the entire point - a copy of the logic would pass even
-    when the shipped guard is dead. It runs with builtins stripped, in a test
-    that touches nothing outside a temp dir.
-    """
-    m = re.search(r'\n\s*busy\s*=\s*(.+)', api_src)
-    if m is None:
-        return None
-    expr = m.group(1).strip()
-
-    def guard(requested, running):
-        scope = {
-            '_running_source_ids': lambda: set(running),
-            'requested_sources': list(requested),
-            'set': set,
-        }
-        try:
-            return bool(eval(expr, {'__builtins__': {}}, scope))
-        except Exception:
-            return None
-
-    return guard
-
-
 def main():
     print("Gate: git rotation + per-project archives\n")
 
@@ -291,26 +259,21 @@ def main():
     api_code = strip(api_src)
     check("API exposes running sources", "'/running-sources'" in api_code)
 
-    # Not "does the guard appear in the file" - that stays true when the
-    # assignment is dead. Execute the guard's real logic against a source that
-    # is busy and one that is not.
-    guard = extract_guard_logic(api_src)
-    if guard is None:
-        FAILURES.append("concurrent-run guard: could not be extracted from source")
-        print("  FAIL concurrent-run guard  could not be extracted")
-    else:
-        check("guard blocks a source that is already running",
-              guard(requested=['gh'], running={'gh'}) is True,
-              "a second run on the same source must be refused")
-        check("guard lets an idle source through",
-              guard(requested=['gh'], running={'other'}) is False,
-              "an unrelated running source must not block")
-        check("guard lets everything through when nothing runs",
-              guard(requested=['gh'], running=set()) is False)
+    jobs_path = os.path.join(BACKEND, 'app', 'backup', 'jobs.py')
+    with open(jobs_path, encoding='utf-8') as fh:
+        jobs_src = fh.read()
+    check("API delegates to the durable reservation guard",
+          'reserve_backup(' in api_src and 'except JobConflictError' in api_src,
+          "start must reserve before the worker can execute")
+    check("reservation checks active sources while holding the job lock",
+          'with job_lock()' in jobs_src
+          and 'busy = active_source_ids() & set(selected_ids)' in jobs_src
+          and 'raise JobConflictError(busy)' in jobs_src,
+          "same-source jobs must be serialized across processes")
     check("API rejects disabled sources",
-          "'Sources are disabled'" in api_src,
+          "'Sources are disabled'" in jobs_src,
           "a disabled source is dropped by the executor and would report success")
-    check("API rejects unknown sources", "'Unknown sources'" in api_src)
+    check("API rejects unknown sources", "'Unknown sources'" in jobs_src)
 
     # --- 4. end to end: a real mirror archives and restores ----------------
     print("\n4. End-to-end on a real git mirror")

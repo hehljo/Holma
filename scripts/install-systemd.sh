@@ -108,11 +108,8 @@ if [[ ! -f /etc/backupgenie/api_token ]]; then
     log_warn "API token file not found at /etc/backupgenie/api_token"
     echo ""
     echo "  To generate a token:"
-    echo "    1. Log into BackupGenie web UI"
-    echo "    2. Go to Settings > API Tokens"
-    echo "    3. Generate a new token"
-    echo "    4. Save it: echo 'YOUR_TOKEN' | sudo tee /etc/backupgenie/api_token"
-    echo "    5. Protect it: sudo chmod 600 /etc/backupgenie/api_token"
+    echo "    sudo python3 $SCRIPT_DIR/create-api-token.py"
+    echo "  The helper asks for the admin password and writes mode 0600."
     echo ""
 else
     chmod 600 /etc/backupgenie/api_token

@@ -3,7 +3,8 @@ Notification API endpoints
 """
 from flask import Blueprint, request, jsonify
 from app.notifications.manager import NotificationManager
-from app.api.auth import token_required
+from app import limiter
+from app.api.auth import admin_required
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,8 @@ notifications_bp = Blueprint('notifications', __name__)
 
 
 @notifications_bp.route('/test', methods=['POST'])
-@token_required
+@admin_required
+@limiter.limit("10 per hour")
 def test_notification(current_user):
     """
     Test notification channel
@@ -50,12 +52,12 @@ def test_notification(current_user):
             }), 200
 
     except Exception as e:
-        logger.error(f"Error testing notification: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error('Error testing notification: %s', type(e).__name__)
+        return jsonify({'error': 'Notification test failed'}), 500
 
 
 @notifications_bp.route('/channels', methods=['GET'])
-@token_required
+@admin_required
 def list_channels(current_user):
     """
     List all configured notification channels
@@ -72,12 +74,13 @@ def list_channels(current_user):
         }), 200
 
     except Exception as e:
-        logger.error(f"Error listing channels: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error('Error listing channels: %s', type(e).__name__)
+        return jsonify({'error': 'Could not list notification channels'}), 500
 
 
 @notifications_bp.route('/send', methods=['POST'])
-@token_required
+@admin_required
+@limiter.limit("30 per hour")
 def send_notification(current_user):
     """
     Send custom notification
@@ -98,6 +101,10 @@ def send_notification(current_user):
 
         title = data['title']
         message = data['message']
+        if not isinstance(title, str) or not isinstance(message, str):
+            return jsonify({'error': 'Title and message must be strings'}), 400
+        if len(title) > 200 or len(message) > 10000:
+            return jsonify({'error': 'Notification content is too long'}), 400
         priority_str = data.get('priority', 'normal')
         channels = data.get('channels')
 
@@ -127,5 +134,5 @@ def send_notification(current_user):
         }), 200
 
     except Exception as e:
-        logger.error(f"Error sending notification: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error('Error sending notification: %s', type(e).__name__)
+        return jsonify({'error': 'Notification could not be sent'}), 500

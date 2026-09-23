@@ -386,17 +386,21 @@ launch_webui_wizard() {
 #!/usr/bin/env python3
 """BackupGenie WebUI Setup Wizard - Lightweight setup server"""
 import http.server
+import hmac
 import json
 import os
+import secrets
 import subprocess
 import sys
-import socket
 import webbrowser
 import threading
 import urllib.parse
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8888
-INSTALL_DIR = sys.argv[2] if len(sys.argv) > 2 else os.getcwd()
+INSTALL_DIR = os.path.realpath(sys.argv[2] if len(sys.argv) > 2 else os.getcwd())
+SETUP_TOKEN = sys.argv[3] if len(sys.argv) > 3 else ''
+if len(SETUP_TOKEN) < 32:
+    raise SystemExit('A strong one-time setup token is required')
 
 HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -555,7 +559,7 @@ h2 { font-size: 20px; margin-bottom: 8px; }
     <p class="subtitle">Customize your BackupGenie installation</p>
     <div class="form-group">
       <label>Installation Directory</label>
-      <input type="text" id="installDir" value="">
+      <input type="text" id="installDir" value="" disabled>
     </div>
     <div class="form-group">
       <label>Backup Mount Path</label>
@@ -612,6 +616,11 @@ h2 { font-size: 20px; margin-bottom: 8px; }
 </div>
 
 <script>
+const SETUP_TOKEN = '__SETUP_TOKEN__';
+const apiFetch = (url, options = {}) => fetch(url, {
+  ...options,
+  headers: {...(options.headers || {}), 'X-Setup-Token': SETUP_TOKEN}
+});
 const STEPS = 4;
 let currentStep = 1;
 
@@ -633,7 +642,7 @@ function goStep(n) {
 }
 
 async function checkSystem() {
-  const res = await fetch('/api/system-check');
+  const res = await apiFetch('/api/system-check');
   const data = await res.json();
   const el = document.getElementById('systemChecks');
 
@@ -662,7 +671,6 @@ async function checkSystem() {
 
 async function saveConfig() {
   const config = {
-    install_dir: document.getElementById('installDir').value,
     backup_path: document.getElementById('backupPath').value,
     api_port: document.getElementById('apiPort').value,
     frontend_port: document.getElementById('frontendPort').value,
@@ -681,7 +689,7 @@ async function saveConfig() {
     setProgress(10, 'Saving configuration...');
     addLog('Saving configuration...');
 
-    const res1 = await fetch('/api/configure', {
+    const res1 = await apiFetch('/api/configure', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(config)
     });
@@ -691,14 +699,14 @@ async function saveConfig() {
     setProgress(30, 'Building Docker images...');
     addLog('Building Docker images (this may take several minutes)...');
 
-    const res2 = await fetch('/api/build', { method: 'POST' });
+    const res2 = await apiFetch('/api/build', { method: 'POST' });
     const r2 = await res2.json();
     addLog(r2.message || 'Build complete');
 
     setProgress(70, 'Starting containers...');
     addLog('Starting BackupGenie containers...');
 
-    const res3 = await fetch('/api/start', { method: 'POST' });
+    const res3 = await apiFetch('/api/start', { method: 'POST' });
     const r3 = await res3.json();
     addLog(r3.message || 'Containers started');
 
@@ -706,7 +714,7 @@ async function saveConfig() {
     addLog('Checking service health...');
 
     await new Promise(r => setTimeout(r, 5000));
-    const res4 = await fetch('/api/status');
+    const res4 = await apiFetch('/api/status');
     const r4 = await res4.json();
     addLog(r4.message || 'Services running');
 
@@ -735,26 +743,43 @@ checkSystem();
 
 class WizardHandler(http.server.BaseHTTPRequestHandler):
     install_dir = INSTALL_DIR
+    stage = 'ready'
 
     def log_message(self, format, *args):
         pass  # Suppress default logging
 
     def do_GET(self):
-        if self.path == '/' or self.path == '/index.html':
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path.startswith('/api/') and not self._authorized():
+            self._json_response({'ok': False, 'message': 'Forbidden'}, 403)
+            return
+        if parsed.path in ('/', '/index.html'):
+            query = urllib.parse.parse_qs(parsed.query)
+            supplied = query.get('token', [''])[0]
+            if not hmac.compare_digest(supplied, SETUP_TOKEN):
+                self.send_error(403)
+                return
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
+            self.send_header('Cache-Control', 'no-store')
             self.end_headers()
-            self.wfile.write(HTML.encode())
-        elif self.path == '/api/system-check':
+            self.wfile.write(HTML.replace('__SETUP_TOKEN__', SETUP_TOKEN).encode())
+        elif parsed.path == '/api/system-check':
             self._system_check()
-        elif self.path == '/api/status':
+        elif parsed.path == '/api/status':
             self._check_status()
         else:
             self.send_error(404)
 
     def do_POST(self):
+        if not self._authorized():
+            self._json_response({'ok': False, 'message': 'Forbidden'}, 403)
+            return
         if self.path == '/api/configure':
             length = int(self.headers.get('Content-Length', 0))
+            if length > 16384:
+                self._json_response({'ok': False, 'message': 'Request too large'}, 413)
+                return
             data = json.loads(self.rfile.read(length)) if length else {}
             self._configure(data)
         elif self.path == '/api/build':
@@ -769,6 +794,19 @@ class WizardHandler(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'application/json')
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
+
+    def _authorized(self):
+        supplied = self.headers.get('X-Setup-Token', '')
+        return hmac.compare_digest(supplied, SETUP_TOKEN)
+
+    def _require_stage(self, expected):
+        if WizardHandler.stage != expected:
+            self._json_response({
+                'ok': False,
+                'message': f'Invalid setup stage: {WizardHandler.stage}'
+            }, 409)
+            return False
+        return True
 
     def _system_check(self):
         import platform
@@ -817,44 +855,72 @@ class WizardHandler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 pass
 
-        default_dir = os.path.expanduser('~/BackupGenie') if os_name == 'Darwin' else '/opt/BackupGenie'
-
         self._json_response({
             'platform': platform_name,
             'arch': platform.machine(),
             'platform_icon': icons.get(os_name, '💻'),
             'checks': checks,
-            'default_install_dir': default_dir
+            'default_install_dir': INSTALL_DIR
         })
 
     def _configure(self, data):
-        self.install_dir = data.get('install_dir', INSTALL_DIR)
-        WizardHandler.install_dir = self.install_dir
+        if not self._require_stage('ready'):
+            return
+        self.install_dir = INSTALL_DIR
 
         try:
-            os.makedirs(self.install_dir, exist_ok=True)
+            if not os.path.isfile(os.path.join(self.install_dir, 'docker-compose.yml')):
+                raise ValueError('Fixed installation directory is not a BackupGenie checkout')
             os.makedirs(os.path.join(self.install_dir, 'config'), exist_ok=True)
             os.makedirs(os.path.join(self.install_dir, 'data'), exist_ok=True)
             os.makedirs(os.path.join(self.install_dir, 'logs'), exist_ok=True)
 
-            # Create .env
-            import secrets
-            env_content = f"""SECRET_KEY={secrets.token_urlsafe(32)}
+            env_path = os.path.join(self.install_dir, '.env')
+            if not os.path.exists(env_path):
+                api_port = int(data.get('api_port', 5000))
+                frontend_port = int(data.get('frontend_port', 3000))
+                max_parallel = int(data.get('max_parallel', 2))
+                backup_path = str(data.get('backup_path', '/mnt/backup')).strip()
+                if not (1 <= api_port <= 65535 and 1 <= frontend_port <= 65535):
+                    raise ValueError('Ports must be between 1 and 65535')
+                if not (1 <= max_parallel <= 10):
+                    raise ValueError('Parallel backups must be between 1 and 10')
+                if not os.path.isabs(backup_path) or any(c in backup_path for c in '\r\n\0'):
+                    raise ValueError('Backup path must be an absolute path')
+                env_content = f"""SECRET_KEY={secrets.token_urlsafe(32)}
 DEBUG=false
-API_PORT={data.get('api_port', 5000)}
-FRONTEND_PORT={data.get('frontend_port', 3000)}
-BACKUP_BASE_PATH={data.get('backup_path', '/mnt/backup')}
-MAX_PARALLEL_TASKS={data.get('max_parallel', 2)}
+API_PORT={api_port}
+FRONTEND_PORT={frontend_port}
+BACKUP_BASE_PATH={backup_path}
+MAX_PARALLEL_TASKS={max_parallel}
 LOG_RETENTION_DAYS=30
 """
-            with open(os.path.join(self.install_dir, '.env'), 'w') as f:
-                f.write(env_content)
+                with open(env_path, 'x', encoding='utf-8') as env_file:
+                    env_file.write(env_content)
+                os.chmod(env_path, 0o600)
+                message = 'Configuration saved'
+            else:
+                message = 'Existing .env preserved'
 
-            self._json_response({'ok': True, 'message': 'Configuration saved'})
+            sources_path = os.path.join(self.install_dir, 'config', 'sources.json')
+            if not os.path.exists(sources_path):
+                with open(sources_path, 'x', encoding='utf-8') as sources_file:
+                    json.dump({'backup_sources': []}, sources_file)
+                os.chmod(sources_path, 0o600)
+            rclone_path = os.path.join(self.install_dir, 'config', 'rclone.conf')
+            if not os.path.exists(rclone_path):
+                with open(rclone_path, 'x', encoding='utf-8'):
+                    pass
+                os.chmod(rclone_path, 0o600)
+
+            WizardHandler.stage = 'configured'
+            self._json_response({'ok': True, 'message': message})
         except Exception as e:
             self._json_response({'ok': False, 'message': str(e)}, 500)
 
     def _build(self):
+        if not self._require_stage('configured'):
+            return
         try:
             r = subprocess.run(
                 ['docker', 'compose', 'build'],
@@ -863,11 +929,15 @@ LOG_RETENTION_DAYS=30
             )
             ok = r.returncode == 0
             msg = 'Build successful' if ok else f'Build failed: {r.stderr[-300:]}'
+            if ok:
+                WizardHandler.stage = 'built'
             self._json_response({'ok': ok, 'message': msg})
         except Exception as e:
             self._json_response({'ok': False, 'message': str(e)}, 500)
 
     def _start(self):
+        if not self._require_stage('built'):
+            return
         try:
             r = subprocess.run(
                 ['docker', 'compose', 'up', '-d'],
@@ -875,6 +945,9 @@ LOG_RETENTION_DAYS=30
                 cwd=self.install_dir
             )
             ok = r.returncode == 0
+            if ok:
+                WizardHandler.stage = 'started'
+                threading.Timer(120, self.server.shutdown).start()
             self._json_response({'ok': ok, 'message': 'Containers started' if ok else r.stderr[-200:]})
         except Exception as e:
             self._json_response({'ok': False, 'message': str(e)}, 500)
@@ -907,14 +980,13 @@ LOG_RETENTION_DAYS=30
 
 
 def run_wizard(port):
-    server = http.server.HTTPServer(('0.0.0.0', port), WizardHandler)
-    ip = socket.gethostbyname(socket.gethostname())
-    url = f'http://{ip}:{port}'
+    server = http.server.HTTPServer(('127.0.0.1', port), WizardHandler)
+    url = f'http://127.0.0.1:{port}/?token={urllib.parse.quote(SETUP_TOKEN)}'
     print(f'\n  🧞 BackupGenie Setup Wizard running at:')
     print(f'     {url}')
-    print(f'     http://localhost:{port}')
+    print('     Localhost only; the wizard closes automatically after installation.')
     print(f'\n  Press Ctrl+C to stop\n')
-    threading.Timer(1.5, lambda: webbrowser.open(f'http://localhost:{port}')).start()
+    threading.Timer(1.5, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -928,7 +1000,9 @@ PYEOF
 
     log_info "Starting setup wizard on port $port..."
     echo ""
-    python3 "$wizard_dir/wizard.py" "$port" "$install_dir"
+    local wizard_token
+    wizard_token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+    python3 "$wizard_dir/wizard.py" "$port" "$install_dir" "$wizard_token"
 }
 
 # --- Print Summary ---

@@ -52,8 +52,11 @@ export const authAPI = {
   getCurrentUser: () =>
     api.get('/auth/me'),
 
-  changePassword: (newPassword) =>
-    api.put('/auth/password', { new_password: newPassword }),
+  changePassword: (currentPassword, newPassword) =>
+    api.put('/auth/password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
 
   initAdmin: () =>
     api.post('/auth/init'),
@@ -124,8 +127,8 @@ export const restoreAPI = {
   start: (data) =>
     api.post('/backup/restore', data),
 
-  getStatus: (restoreId) =>
-    api.get(`/backup/restore/${restoreId}`),
+  getStatus: (restoreId, config = {}) =>
+    api.get(`/backup/restore/${restoreId}`, config),
 }
 
 // Download API

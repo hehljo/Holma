@@ -10,9 +10,12 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_talisman import Talisman
 from sqlalchemy import text
+from contextlib import contextmanager
+import fcntl
 import os
 import logging
-from logging.handlers import RotatingFileHandler
+from logging.handlers import TimedRotatingFileHandler
+from werkzeug.middleware.proxy_fix import ProxyFix
 from app.config import Config
 
 db = SQLAlchemy()
@@ -24,15 +27,84 @@ limiter = Limiter(
 )
 
 
+@contextmanager
+def _app_init_lock(config_class):
+    """Serialize schema/bootstrap work across gunicorn and worker processes."""
+    lock_path = config_class.APP_INIT_LOCK_PATH
+    parent = os.path.dirname(lock_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    with open(lock_path, 'a+', encoding='utf-8') as lock_file:
+        os.chmod(lock_path, 0o600)
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 def get_locale():
     """Get locale from request header or default to English"""
     return request.headers.get('Accept-Language', 'en').split(',')[0][:2]
+
+
+def _configure_file_logging(config_class):
+    """Configure or refresh the process logger from persisted settings."""
+    from app.runtime_settings import get_setting
+
+    root_logger = logging.getLogger()
+    log_file = config_class.LOG_FILE
+    log_dir = os.path.dirname(log_file)
+    if not os.path.isdir(log_dir):
+        return
+
+    try:
+        retention = max(
+            1,
+            int(get_setting(
+                'log_retention_days', config_class.LOG_RETENTION_DAYS
+            )),
+        )
+    except (TypeError, ValueError):
+        retention = max(1, int(config_class.LOG_RETENTION_DAYS))
+        root_logger.warning('Ignoring invalid stored log_retention_days')
+    level = getattr(logging, config_class.LOG_LEVEL, logging.INFO)
+    file_handler = next(
+        (
+            handler for handler in root_logger.handlers
+            if isinstance(handler, TimedRotatingFileHandler)
+            and os.path.abspath(handler.baseFilename) == os.path.abspath(log_file)
+        ),
+        None,
+    )
+    if file_handler is None:
+        file_handler = TimedRotatingFileHandler(
+            log_file,
+            when='midnight',
+            interval=1,
+            backupCount=retention,
+            utc=True,
+        )
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s [%(name)s] %(message)s'
+        ))
+        root_logger.addHandler(file_handler)
+    else:
+        file_handler.backupCount = retention
+    file_handler.setLevel(level)
+    root_logger.setLevel(level)
 
 
 def create_app(config_class=Config):
     """Application factory pattern"""
     app = Flask(__name__)
     app.config.from_object(config_class)
+
+    if config_class.TRUST_PROXY_HEADERS:
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1
+        )
 
     # Validate critical security settings
     config_class.validate()
@@ -63,16 +135,16 @@ def create_app(config_class=Config):
     # Security Headers (disabled force_https for development, enable in production behind proxy)
     csp = {
         'default-src': "'self'",
-        'script-src': ["'self'", "'unsafe-inline'"],  # Tailwind requires unsafe-inline
+        'script-src': ["'self'"],
         'style-src': ["'self'", "'unsafe-inline'"],
         'img-src': ["'self'", "data:", "https:"],
         'font-src': ["'self'", "data:"],
         'connect-src': ["'self'"],
     }
     Talisman(app,
-        force_https=False,  # Set to True in production with HTTPS
+        force_https=config_class.FORCE_HTTPS,
+        strict_transport_security=config_class.FORCE_HTTPS,
         content_security_policy=csp,
-        content_security_policy_nonce_in=['script-src']
     )
 
     # Register blueprints
@@ -90,62 +162,62 @@ def create_app(config_class=Config):
     app.register_blueprint(settings_bp, url_prefix='/api/v1/settings')
     app.register_blueprint(config_bp, url_prefix='/api/v1/config')
 
-    # Configure file logging (only on root logger, avoid duplicates)
-    root_logger = logging.getLogger()
-    log_dir = os.path.dirname(Config.LOG_FILE)
-    has_file_handler = any(
-        isinstance(h, RotatingFileHandler) for h in root_logger.handlers
-    )
-    if os.path.isdir(log_dir) and not has_file_handler:
-        file_handler = RotatingFileHandler(
-            Config.LOG_FILE, maxBytes=10*1024*1024, backupCount=5
-        )
-        file_handler.setLevel(getattr(logging, Config.LOG_LEVEL, logging.INFO))
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s %(levelname)s [%(name)s] %(message)s'
-        ))
-        root_logger.addHandler(file_handler)
-        root_logger.setLevel(getattr(logging, Config.LOG_LEVEL, logging.INFO))
-
     # Create database tables if they don't exist
     with app.app_context():
-        from sqlalchemy import inspect as sa_inspect
-        inspector = sa_inspect(db.engine)
-        existing_tables = set(inspector.get_table_names())
-        # Only create tables that don't exist yet
-        tables_to_create = [
-            table for table in db.metadata.sorted_tables
-            if table.name not in existing_tables
-        ]
-        if tables_to_create:
-            db.metadata.create_all(db.engine, tables=tables_to_create)
-            app.logger.info(f"Created new tables: {[t.name for t in tables_to_create]}")
-
-        # Bootstrap admin user if no users exist
-        from app.models.backup import User
-        from werkzeug.security import generate_password_hash
-        from sqlalchemy.exc import IntegrityError
-
-        try:
-            if User.query.count() == 0:
-                import secrets
-                configured_password = os.environ.get('DEFAULT_ADMIN_PASSWORD')
-                default_password = configured_password or secrets.token_urlsafe(18)
-                admin = User(
-                    username='admin',
-                    password_hash=generate_password_hash(default_password)
+        with _app_init_lock(config_class):
+            from sqlalchemy import inspect as sa_inspect
+            inspector = sa_inspect(db.engine)
+            existing_tables = set(inspector.get_table_names())
+            # Only create tables that don't exist yet. The process lock avoids
+            # SQLite's check-then-create race during multi-worker startup.
+            tables_to_create = [
+                table for table in db.metadata.sorted_tables
+                if table.name not in existing_tables
+            ]
+            if tables_to_create:
+                db.metadata.create_all(db.engine, tables=tables_to_create)
+                app.logger.info(
+                    "Created new tables: %s",
+                    [table.name for table in tables_to_create],
                 )
-                db.session.add(admin)
-                db.session.commit()
-                if configured_password:
-                    print("[INIT] Admin user created with configured password.")
-                else:
-                    print(f"[INIT] Admin user created. Password: {default_password}")
-                app.logger.info("Bootstrap: Admin user created. Check container stdout for password.")
-        except IntegrityError:
-            # User already exists (race condition with multiple workers)
-            db.session.rollback()
-            app.logger.info("Bootstrap: Admin user already exists, skipping creation")
+
+            # Bootstrap admin user if no users exist
+            from app.models.backup import User
+            from werkzeug.security import generate_password_hash
+            from sqlalchemy.exc import IntegrityError
+
+            try:
+                if User.query.count() == 0:
+                    import secrets
+                    configured_password = os.environ.get('DEFAULT_ADMIN_PASSWORD')
+                    default_password = configured_password or secrets.token_urlsafe(18)
+                    admin = User(
+                        username='admin',
+                        password_hash=generate_password_hash(default_password)
+                    )
+                    db.session.add(admin)
+                    db.session.commit()
+                    if configured_password:
+                        print("[INIT] Admin user created with configured password.")
+                    else:
+                        print(f"[INIT] Admin user created. Password: {default_password}")
+                    app.logger.info(
+                        "Bootstrap: Admin user created. Check container stdout for password."
+                    )
+            except IntegrityError:
+                db.session.rollback()
+                app.logger.info("Bootstrap: Admin user already exists, skipping creation")
+
+            # One-time, atomic migration of legacy plaintext source credentials.
+            from app.source_config import migrate_source_secrets
+            migrate_source_secrets()
+            from app.notification_config import migrate_notification_secrets
+            migrate_notification_secrets(
+                os.environ.get(
+                    'NOTIFICATION_CONFIG_PATH', '/app/config/notifications.json'
+                )
+            )
+            _configure_file_logging(config_class)
 
     @app.route('/health')
     @limiter.exempt  # Exclude health check from rate limiting

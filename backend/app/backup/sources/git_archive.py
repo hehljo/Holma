@@ -55,7 +55,7 @@ class GitMirrorArchiveMixin:
         `git clone <extracted>.git <target>`.
 
         Returns:
-            int: size of the written archive in bytes, 0 on failure
+            int: size of the written archive in bytes
         """
         final_path = os.path.join(self.dest_path, f"{repo_dir}_{timestamp}.tar.gz")
         # Build under a name the retention cleanup cannot match, then rename -
@@ -77,7 +77,7 @@ class GitMirrorArchiveMixin:
                     os.unlink(tmp_path)
             except OSError:
                 pass
-            return 0
+            raise
 
         size = self._get_file_size(final_path)
         self.log(f"Archived {repo} -> {os.path.basename(final_path)} ({size} bytes)")

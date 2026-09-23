@@ -12,6 +12,8 @@ services:
       - FLASK_ENV=${FLASK_ENV:-production}
       - SECRET_KEY=${SECRET_KEY}
       - DEBUG=${DEBUG:-false}
+      - FORCE_HTTPS=${FORCE_HTTPS:-false}
+      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-false}
       - DATABASE_URL=sqlite:////data/backupgenie.db
       # Timezone for scheduled backups ("03:00" = local wall clock)
       - TZ=${TZ:-Europe/Berlin}
@@ -19,6 +21,7 @@ services:
       - BACKUP_BASE_PATH=/mnt/backup
       - MAX_PARALLEL_TASKS=${MAX_PARALLEL_TASKS:-auto}
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-30}
+      - DOCKER_HELPER_IMAGE=${DOCKER_HELPER_IMAGE:-alpine:3.24.1}
       - SOURCES_CONFIG_PATH=/app/config/sources.json
       - RCLONE_CONFIG_PATH=/app/config/rclone.conf
       - NOTIFICATION_CONFIG_PATH=/app/config/notifications.json
@@ -40,9 +43,6 @@ services:
       - ${LOGS_PATH:-./logs}:/var/log/backupgenie
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker backups (optional)
       - /run/udev:/run/udev:ro  # USB device detection (optional)
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=1
     networks:
@@ -55,8 +55,6 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
-    cap_add:
-      - DAC_READ_SEARCH
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s

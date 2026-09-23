@@ -1,15 +1,17 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 import Layout from './components/Layout'
-import Dashboard from './pages/Dashboard'
-import Sources from './pages/Sources'
-import Backups from './pages/Backups'
-import History from './pages/History'
-import Settings from './pages/Settings'
-import Notifications from './pages/Notifications'
-import Logs from './pages/Logs'
 import Login from './pages/Login'
+import { useTranslation } from 'react-i18next'
+
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Sources = lazy(() => import('./pages/Sources'))
+const Backups = lazy(() => import('./pages/Backups'))
+const History = lazy(() => import('./pages/History'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Notifications = lazy(() => import('./pages/Notifications'))
+const Logs = lazy(() => import('./pages/Logs'))
 
 const getInitialDarkMode = () => {
   const storedTheme = localStorage.getItem('theme')
@@ -21,6 +23,7 @@ const getInitialDarkMode = () => {
 }
 
 function App() {
+  const { t } = useTranslation()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isDarkMode, setIsDarkMode] = useState(getInitialDarkMode)
@@ -53,7 +56,7 @@ function App() {
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-950">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-300">Loading...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-300">{t('common.loading')}</p>
         </div>
       </div>
     )
@@ -99,16 +102,25 @@ function App() {
           isDarkMode={isDarkMode}
           onToggleDarkMode={() => setIsDarkMode((value) => !value)}
         >
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/sources" element={<Sources />} />
-            <Route path="/backups" element={<Backups />} />
-            <Route path="/history" element={<History />} />
-            <Route path="/notifications" element={<Notifications />} />
-            <Route path="/logs" element={<Logs />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <Suspense fallback={(
+            <div className="flex min-h-64 items-center justify-center">
+              <div className="text-center">
+                <div className="mx-auto h-10 w-10 animate-spin rounded-full border-b-2 border-primary-600" />
+                <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">{t('common.loading')}</p>
+              </div>
+            </div>
+          )}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/sources" element={<Sources />} />
+              <Route path="/backups" element={<Backups />} />
+              <Route path="/history" element={<History />} />
+              <Route path="/notifications" element={<Notifications />} />
+              <Route path="/logs" element={<Logs />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
         </Layout>
       </Router>
     </>

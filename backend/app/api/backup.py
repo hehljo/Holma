@@ -3,8 +3,6 @@ Backup API Endpoints
 """
 from flask import Blueprint, request, jsonify, send_file
 from datetime import datetime
-import uuid
-import threading
 import os
 import glob
 import tarfile
@@ -12,26 +10,30 @@ import tempfile
 
 from app import db
 from app.models.backup import Backup, BackupSourceResult
-from app.api.auth import token_required
+from app.api.auth import admin_required, token_required
 from app.backup.executor import BackupExecutor
+from app.backup.jobs import (
+    JobConflictError,
+    JobValidationError,
+    active_source_ids,
+    cancel_backup_job,
+    effective_parallelism,
+    reserve_backup,
+)
+from app.backup.paths import ensure_path_within, source_backup_path
+from app.backup.restore_jobs import (
+    RestoreJobError,
+    enqueue_restore,
+    read_restore_status,
+)
+from app.runtime_settings import backup_root_path
 
 backup_bp = Blueprint('backup', __name__)
 
 
 def _running_source_ids():
-    """Source ids that a currently running backup is working on.
-
-    Used to stop a second run on the same source: two runs writing the same
-    mirror would corrupt it, and their retention passes would race.
-    """
-    running = Backup.query.filter_by(status='running').all()
-    if not running:
-        return set()
-    rows = BackupSourceResult.query.filter(
-        BackupSourceResult.backup_id.in_([b.id for b in running]),
-        BackupSourceResult.status.in_(['pending', 'running'])
-    ).all()
-    return {r.source_id for r in rows}
+    """Source IDs reserved by queued or running backup jobs."""
+    return active_source_ids()
 
 
 @backup_bp.route('/running-sources', methods=['GET'])
@@ -42,65 +44,44 @@ def get_running_sources(current_user):
 
 
 @backup_bp.route('/start', methods=['POST'])
-@token_required
+@admin_required
 def start_backup(current_user):
     """Start a new backup"""
     data = request.get_json() or {}
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Request body must be an object'}), 400
 
-    requested_sources = data.get('sources', [])
-    if requested_sources:
-        # A per-source run must not collide with a run already touching it.
-        busy = _running_source_ids() & set(requested_sources)
-        if busy:
-            return jsonify({
-                'error': 'Backup already running for these sources',
-                'sources': sorted(busy)
-            }), 409
+    from app.api.sources import load_sources
 
-        # The executor silently drops unknown and disabled sources, which would
-        # turn a click into a run over nothing that then reports success. Say so
-        # instead.
-        from app.api.sources import load_sources
-        known = {s.get('id'): s for s in load_sources()}
-        unknown = [s for s in requested_sources if s not in known]
-        if unknown:
-            return jsonify({
-                'error': 'Unknown sources', 'sources': sorted(unknown)
-            }), 404
-        disabled = [s for s in requested_sources if not known[s].get('enabled', True)]
-        if disabled:
-            return jsonify({
-                'error': 'Sources are disabled', 'sources': sorted(disabled)
-            }), 409
+    requested_sources = data.get('sources')
+    if requested_sources == []:
+        requested_sources = None
 
-    # Create backup record
-    backup_id = str(uuid.uuid4())
-    backup = Backup(
-        backup_id=backup_id,
-        status='pending',
-        trigger_type=data.get('trigger_type', 'manual')
-    )
-
-    db.session.add(backup)
-    db.session.commit()
-
-    # Start backup in background thread
-    executor = BackupExecutor(backup_id)
-    sources = data.get('sources', [])
-    parallel = data.get('parallel', 2)
-
-    thread = threading.Thread(
-        target=executor.execute,
-        args=(sources, parallel)
-    )
-    thread.daemon = True
-    thread.start()
+    try:
+        parallel = effective_parallelism(data.get('parallel'))
+        backup, selected = reserve_backup(
+            load_sources(),
+            requested_sources,
+            trigger_type='manual',
+            parallel=parallel,
+        )
+    except JobConflictError as exc:
+        return jsonify({
+            'error': str(exc),
+            'sources': exc.source_ids,
+        }), 409
+    except JobValidationError as exc:
+        response = {'error': str(exc)}
+        if exc.source_ids:
+            response['sources'] = exc.source_ids
+        return jsonify(response), exc.status_code
 
     return jsonify({
-        'backup_id': backup_id,
-        'status': 'started',
+        'backup_id': backup.backup_id,
+        'status': 'queued',
         'started_at': backup.started_at.isoformat(),
-        'sources': len(sources) if sources else 'all'
+        'sources': len(selected),
+        'parallel': parallel,
     }), 202
 
 
@@ -135,7 +116,7 @@ def get_backup_history(current_user):
 
 
 @backup_bp.route('/<backup_id>/stop', methods=['POST'])
-@token_required
+@admin_required
 def stop_backup(current_user, backup_id):
     """Stop a running backup gracefully"""
     backup = Backup.query.filter_by(backup_id=backup_id).first()
@@ -143,27 +124,24 @@ def stop_backup(current_user, backup_id):
     if not backup:
         return jsonify({'error': 'Backup not found'}), 404
 
-    if backup.status not in ['pending', 'running']:
+    backup, state = cancel_backup_job(backup_id)
+    if state == 'not_found':
+        return jsonify({'error': 'Backup not found'}), 404
+    if state == 'not_running':
         return jsonify({'error': 'Backup is not running'}), 400
-
-    # Request the executor to stop gracefully
-    stopped = BackupExecutor.stop_backup(backup_id)
-
-    if stopped:
+    if state == 'cancelling':
+        BackupExecutor.stop_backup(backup_id)
         return jsonify({
             'message': 'Backup stop requested (will complete current source)',
-            'backup_id': backup_id
+            'backup_id': backup_id,
+            'status': 'cancelling',
         }), 200
-    else:
-        # Backup already finished or not found, update status directly
-        backup.status = 'cancelled'
-        backup.completed_at = datetime.utcnow()
-        db.session.commit()
 
-        return jsonify({
-            'message': 'Backup stopped',
-            'backup_id': backup_id
-        }), 200
+    return jsonify({
+        'message': 'Queued backup cancelled',
+        'backup_id': backup_id,
+        'status': 'cancelled',
+    }), 200
 
 
 @backup_bp.route('/stats', methods=['GET'])
@@ -173,7 +151,9 @@ def get_stats(current_user):
     total_backups = Backup.query.count()
     successful = Backup.query.filter_by(status='completed').count()
     failed = Backup.query.filter_by(status='failed').count()
-    running = Backup.query.filter_by(status='running').count()
+    running = Backup.query.filter(
+        Backup.status.in_(('pending', 'running', 'cancelling'))
+    ).count()
 
     # Last backup
     last_backup = Backup.query.order_by(Backup.started_at.desc()).first()
@@ -192,7 +172,7 @@ def get_stats(current_user):
 
 
 @backup_bp.route('/all', methods=['DELETE'])
-@token_required
+@admin_required
 def delete_all_backups(current_user):
     """Delete all backup records (DANGEROUS - requires confirmation)"""
     # Require explicit confirmation parameter
@@ -224,11 +204,13 @@ def delete_all_backups(current_user):
 
 
 @backup_bp.route('/download/<source_id>', methods=['GET'])
-@token_required
+@admin_required
 def list_downloadable(current_user, source_id):
     """List downloadable backup files for a source"""
-    from app.config import Config
-    backup_dir = os.path.join(Config.BACKUP_BASE_PATH, source_id)
+    try:
+        backup_dir = source_backup_path(backup_root_path(), source_id)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
     if not os.path.exists(backup_dir):
         return jsonify({'files': []}), 200
@@ -282,23 +264,25 @@ def list_downloadable(current_user, source_id):
 
 
 @backup_bp.route('/download/<source_id>/<path:filename>', methods=['GET'])
-@token_required
+@admin_required
 def download_backup_file(current_user, source_id, filename):
     """Download a single backup file or pack a directory as tar.gz on the fly"""
-    from app.config import Config
     import re
 
     # Prevent path traversal
     if '..' in filename or filename.startswith('/'):
         return jsonify({'error': 'Invalid filename'}), 400
 
-    backup_dir = os.path.join(Config.BACKUP_BASE_PATH, source_id)
+    try:
+        backup_dir = source_backup_path(backup_root_path(), source_id)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     target = os.path.join(backup_dir, filename)
 
     # Resolve and verify still inside backup_dir
-    real_target = os.path.realpath(target)
-    real_base = os.path.realpath(backup_dir)
-    if not real_target.startswith(real_base + os.sep) and real_target != real_base:
+    try:
+        real_target = ensure_path_within(backup_dir, target)
+    except ValueError:
         return jsonify({'error': 'Access denied'}), 403
 
     if not os.path.exists(real_target):
@@ -333,14 +317,16 @@ def download_backup_file(current_user, source_id, filename):
 
 
 @backup_bp.route('/restore/available/<source_id>', methods=['GET'])
-@token_required
+@admin_required
 def get_available_restores(current_user, source_id):
     """List available backups for restore for a given source"""
     import os
     import glob
-    from app.config import Config
 
-    backup_dir = os.path.join(Config.BACKUP_BASE_PATH, source_id)
+    try:
+        backup_dir = source_backup_path(backup_root_path(), source_id)
+    except ValueError as e:
+        return jsonify({'error': str(e), 'backups': []}), 400
 
     if not os.path.exists(backup_dir):
         return jsonify({'error': 'Kein Backup-Verzeichnis gefunden', 'backups': []}), 200
@@ -385,10 +371,12 @@ def get_available_restores(current_user, source_id):
 
 
 @backup_bp.route('/restore', methods=['POST'])
-@token_required
+@admin_required
 def start_restore(current_user):
-    """Start a Supabase restore operation"""
+    """Queue a durable Supabase restore operation."""
     data = request.get_json() or {}
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Request body must be an object'}), 400
 
     backup_path = data.get('backup_path', '')
     profile = (data.get('profile') or '').strip() or None
@@ -413,90 +401,43 @@ def start_restore(current_user):
             return jsonify({'error': 'Kein DB Passwort im Profil. Trag es in den Credentials ein.'}), 400
 
     import os
-    from app.config import Config
 
-    real_backup_path = os.path.realpath(backup_path)
-    real_backup_base = os.path.realpath(Config.BACKUP_BASE_PATH)
-    if not real_backup_path.startswith(real_backup_base + os.sep):
+    try:
+        real_backup_path = ensure_path_within(backup_root_path(), backup_path)
+    except ValueError:
         return jsonify({'error': 'Backup-Pfad außerhalb des Backup-Verzeichnisses'}), 403
 
     if not os.path.exists(real_backup_path):
         return jsonify({'error': f'Backup nicht gefunden: {backup_path}'}), 404
 
-    # Generate restore ID
-    restore_id = str(uuid.uuid4())
-
-    # Start restore in background thread
-    def run_restore():
-        from app import create_app
-        app = create_app()
-        with app.app_context():
-            from app.backup.restore import SupabaseRestore
-            restorer = SupabaseRestore()
-
-            # Store status in a simple way
-            status_file = os.path.join('/tmp', f'restore_{restore_id}.json')
-            restorer._status_file = status_file
-
-            try:
-                import json
-                # Write initial status
-                with open(status_file, 'w') as f:
-                    json.dump({'status': 'running', 'restore_id': restore_id, 'logs': ''}, f)
-
-                result = restorer.restore(real_backup_path, {
-                    'profile': profile,
-                    'target_connection_string': target_connection_string,
-                    'target_db_password': target_db_password,
-                    'restore_storage': restore_storage,
-                    'target_service_role_key': target_service_role_key,
-                })
-
-                # Write final status
-                with open(status_file, 'w') as f:
-                    json.dump({
-                        'status': result.get('status', 'completed'),
-                        'restore_id': restore_id,
-                        'steps_total': result.get('steps_total', 0),
-                        'steps_completed': result.get('steps_completed', 0),
-                        'errors': result.get('errors', []),
-                        'logs': result.get('logs', ''),
-                    }, f)
-
-            except Exception as e:
-                import json
-                with open(status_file, 'w') as f:
-                    json.dump({
-                        'status': 'failed',
-                        'restore_id': restore_id,
-                        'error': str(e),
-                        'logs': restorer.get_logs(),
-                    }, f)
-
-    thread = threading.Thread(target=run_restore)
-    thread.daemon = True
-    thread.start()
+    job = enqueue_restore({
+        'backup_path': real_backup_path,
+        'target_config': {
+            'profile': profile,
+            'target_connection_string': target_connection_string,
+            'target_db_password': target_db_password,
+            'restore_storage': bool(restore_storage),
+            'target_service_role_key': target_service_role_key,
+        },
+    })
 
     return jsonify({
-        'restore_id': restore_id,
-        'status': 'started',
-        'message': 'Restore gestartet'
+        'restore_id': job['restore_id'],
+        'status': job['status'],
+        'message': 'Restore eingereiht'
     }), 202
 
 
 @backup_bp.route('/restore/<restore_id>', methods=['GET'])
 @token_required
 def get_restore_status(current_user, restore_id):
-    """Get restore operation status"""
-    import os
-    import json as json_module
-
-    status_file = os.path.join('/tmp', f'restore_{restore_id}.json')
-
-    if not os.path.exists(status_file):
+    """Get durable restore operation status."""
+    try:
+        status = read_restore_status(restore_id)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except RestoreJobError:
+        return jsonify({'error': 'Restore-Status ist beschädigt'}), 500
+    if not status:
         return jsonify({'error': 'Restore nicht gefunden'}), 404
-
-    with open(status_file, 'r') as f:
-        status = json_module.load(f)
-
     return jsonify(status), 200

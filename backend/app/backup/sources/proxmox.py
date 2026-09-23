@@ -10,6 +10,7 @@ import os
 import json
 import time
 import requests
+import re
 from app.backup.base import BackupHandler
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,10 @@ class ProxmoxBackup(BackupHandler):
 
         if not host:
             raise Exception("Proxmox host is required")
+        if not re.fullmatch(r'[A-Za-z0-9_.:-]{1,253}', str(host)):
+            raise Exception('Invalid Proxmox host')
+        if not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', str(node)):
+            raise Exception('Invalid Proxmox node')
 
         # Get API token or user/password
         token_env = credentials.get('token_env', '')
@@ -57,15 +62,20 @@ class ProxmoxBackup(BackupHandler):
         if api_token or token_env:
             if not api_token:
                 api_token = self._get_env_credential(token_env)
+            if not token_id:
+                raise Exception('Proxmox token_id is required for API token auth')
             headers = {'Authorization': f'PVEAPIToken={token_id}={api_token}'}
         else:
             # Fallback: user/password auth (get ticket)
             username = self._get_env_credential(credentials.get('username_env', 'PROXMOX_USER'))
             password = self._get_env_credential(credentials.get('password_env', 'PROXMOX_PASSWORD'))
-            headers = self._get_auth_ticket(host, port, username, password)
+            verify_ssl = options.get('verify_ssl', True)
+            headers = self._get_auth_ticket(
+                host, port, username, password, verify_ssl
+            )
 
         base_url = f"https://{host}:{port}/api2/json"
-        verify_ssl = options.get('verify_ssl', False)
+        verify_ssl = options.get('verify_ssl', True)
 
         # Get list of VMs/Containers to backup
         vmids = self._as_list(self.source_config.get('vmids'))  # Explicit list
@@ -84,6 +94,8 @@ class ProxmoxBackup(BackupHandler):
         for vmid in vmids:
             try:
                 vmid = str(vmid)
+                if not vmid.isdigit():
+                    raise Exception('Invalid VMID')
                 self.log(f"Starting backup for VMID {vmid}...")
 
                 # Start vzdump via API
@@ -109,9 +121,10 @@ class ProxmoxBackup(BackupHandler):
                 resp.raise_for_status()
                 task_id = resp.json().get('data', '')
 
-                if task_id:
-                    # Wait for task completion
-                    self._wait_for_task(base_url, node, task_id, headers, verify_ssl)
+                if not task_id:
+                    raise Exception(f"Proxmox returned no task id for VMID {vmid}")
+                # Wait for task completion
+                self._wait_for_task(base_url, node, task_id, headers, verify_ssl)
 
                 self.log(f"Backup completed for VMID {vmid}")
                 files_synced += 1
@@ -191,12 +204,12 @@ class ProxmoxBackup(BackupHandler):
             'logs': self.get_logs()
         }
 
-    def _get_auth_ticket(self, host, port, username, password):
+    def _get_auth_ticket(self, host, port, username, password, verify_ssl):
         """Get authentication ticket from Proxmox API"""
         resp = requests.post(
             f"https://{host}:{port}/api2/json/access/ticket",
             data={'username': username, 'password': password},
-            verify=False,
+            verify=verify_ssl,
             timeout=10
         )
         resp.raise_for_status()
@@ -222,7 +235,7 @@ class ProxmoxBackup(BackupHandler):
             for vm in resp.json().get('data', []):
                 vmids.append(vm['vmid'])
         except Exception as e:
-            self.log(f"WARNING: Could not list VMs: {e}")
+            self.log(f"ERROR: Could not list VMs: {e}")
 
         # Get LXC containers
         try:
@@ -236,7 +249,7 @@ class ProxmoxBackup(BackupHandler):
             for ct in resp.json().get('data', []):
                 vmids.append(ct['vmid'])
         except Exception as e:
-            self.log(f"WARNING: Could not list containers: {e}")
+            self.log(f"ERROR: Could not list containers: {e}")
 
         return sorted(vmids)
 
@@ -292,7 +305,7 @@ class ProxmoxBackup(BackupHandler):
             except Exception:
                 continue
 
-        self.log(f"WARNING: Could not fetch config for VMID {vmid}")
+        self.log(f"ERROR: Could not fetch config for VMID {vmid}")
 
     def _download_backups(self, base_url, node, vmids, headers, verify_ssl, options):
         """Download backup files from Proxmox storage to local destination"""
@@ -344,9 +357,9 @@ class ProxmoxBackup(BackupHandler):
                     total_size += file_size
                     self.log(f"Downloaded {filename} ({file_size} bytes)")
                 except Exception as e:
-                    self.log(f"WARNING: Failed to download {filename}: {e}")
+                    self.log(f"ERROR: Failed to download {filename}: {e}")
 
         except Exception as e:
-            self.log(f"WARNING: Could not list backups from storage: {e}")
+            self.log(f"ERROR: Could not list backups from storage: {e}")
 
         return total_size

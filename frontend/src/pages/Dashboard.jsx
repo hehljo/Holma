@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Play, Clock, CheckCircle, XCircle, HardDrive, Database, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import { backupAPI, sourcesAPI } from '../services/api'
 import clsx from 'clsx'
@@ -14,21 +14,7 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [runningBackup, setRunningBackup] = useState(null) // full backup object with sources
   const [expandedLiveLogs, setExpandedLiveLogs] = useState({})
-  const intervalRef = useRef(null)
-
-  useEffect(() => {
-    loadData()
-    scheduleRefresh()
-    return () => clearInterval(intervalRef.current)
-  }, [])
-
-  const scheduleRefresh = () => {
-    clearInterval(intervalRef.current)
-    // Fast polling when a backup is running, slow otherwise
-    intervalRef.current = setInterval(loadData, runningBackup ? 3000 : 10000)
-  }
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [statsRes, sourcesRes, historyRes] = await Promise.all([
         backupAPI.getStats(),
@@ -59,10 +45,17 @@ export default function Dashboard() {
       console.error('Error loading data:', error)
       setIsLoading(false)
     }
-  }
+  }, [])
 
-  // Re-schedule interval whenever runningBackup changes (fast ↔ slow)
-  useEffect(() => { scheduleRefresh() }, [runningBackup])
+  const hasRunningBackup = Boolean(runningBackup)
+  useEffect(() => {
+    loadData()
+    const interval = window.setInterval(
+      loadData,
+      hasRunningBackup ? 3000 : 10000,
+    )
+    return () => window.clearInterval(interval)
+  }, [hasRunningBackup, loadData])
 
   const handleStartBackup = async () => {
     setIsStarting(true)

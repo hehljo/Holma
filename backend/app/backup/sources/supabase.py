@@ -18,6 +18,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 from app.backup.base import BackupHandler
+from app.postgres_utils import safe_postgres_command
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,8 @@ class SupabaseBackup(BackupHandler):
 
         # Extract project_ref from connection string for API URL
         project_ref = self._extract_project_ref(connection_string)
+        if backup_mode == 'full' and not project_ref:
+            raise Exception("Project Ref konnte aus dem Connection String nicht ermittelt werden.")
 
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         backup_dir = os.path.join(self.dest_path, f"supabase_{timestamp}")
@@ -137,18 +140,18 @@ class SupabaseBackup(BackupHandler):
         files = 0
         timeout = options.get('timeout', 3600)
 
-        env = os.environ.copy()
+        safe_connection, env = safe_postgres_command(connection_string)
 
         # 1. Roles dump
         roles_file = os.path.join(backup_dir, f"roles_{timestamp}.sql")
         self.log("Dumping roles...")
         result = subprocess.run(
-            ['pg_dumpall', '--dbname', connection_string,
+            ['pg_dumpall', '--dbname', safe_connection,
              '--roles-only', '-f', roles_file],
             capture_output=True, text=True, env=env, timeout=timeout
         )
         if result.returncode != 0:
-            self.log(f"WARNING: Roles dump returned code {result.returncode}: "
+            self.log(f"ERROR: Roles dump returned code {result.returncode}: "
                      f"{result.stderr}")
         else:
             total_size += self._get_file_size(roles_file)
@@ -159,7 +162,7 @@ class SupabaseBackup(BackupHandler):
         schema_file = os.path.join(backup_dir, f"schema_{timestamp}.sql")
         self.log("Dumping schema...")
         result = subprocess.run(
-            ['pg_dump', connection_string,
+            ['pg_dump', safe_connection,
              '--schema-only', '-f', schema_file],
             capture_output=True, text=True, env=env, timeout=timeout
         )
@@ -172,7 +175,7 @@ class SupabaseBackup(BackupHandler):
         # 3. Data dump
         data_file = os.path.join(backup_dir, f"data_{timestamp}.sql")
         self.log("Dumping data (COPY format)...")
-        data_cmd = ['pg_dump', connection_string, '--data-only',
+        data_cmd = ['pg_dump', safe_connection, '--data-only',
                     '-f', data_file]
         result = subprocess.run(
             data_cmd,
@@ -255,7 +258,7 @@ class SupabaseBackup(BackupHandler):
                     files += 1
                     object_metadata[obj_name] = self._extract_object_metadata(obj)
                 except Exception as e:
-                    self.log(f"WARNING: Konnte {obj_name} nicht laden: {e}")
+                    self.log(f"ERROR: Konnte {obj_name} nicht laden: {e}")
 
             objects_meta_file = os.path.join(object_metadata_dir, meta_name)
             with open(objects_meta_file, 'w', encoding='utf-8') as f:
@@ -285,11 +288,12 @@ class SupabaseBackup(BackupHandler):
             )
 
             try:
-                with urlopen(req, timeout=30) as resp:
+                # api_url is always HTTPS and derived from a validated project ref.
+                with urlopen(req, timeout=30) as resp:  # nosec B310
                     items = json.loads(resp.read().decode('utf-8'))
             except Exception as e:
-                self.log(f"WARNING: Bucket-Listing fehlgeschlagen: {e}")
-                break
+                self.log(f"ERROR: Bucket-Listing fehlgeschlagen: {e}")
+                raise
 
             if not items:
                 break
@@ -323,7 +327,7 @@ class SupabaseBackup(BackupHandler):
 
         total_size = 0
         files = 0
-        env = os.environ.copy()
+        safe_connection, env = safe_postgres_command(connection_string)
 
         # Dump RLS policies (no trailing semicolon — \copy doesn't allow it)
         rls_file = os.path.join(config_dir, f"rls_policies_{timestamp}.sql")
@@ -334,7 +338,7 @@ class SupabaseBackup(BackupHandler):
         )
         self.log("Exporting RLS Policies...")
         result = subprocess.run(
-            ['psql', connection_string, '-c',
+            ['psql', safe_connection, '-c',
              f"\\copy ({rls_query}) TO STDOUT WITH CSV HEADER"],
             capture_output=True, text=True, env=env, timeout=120
         )
@@ -346,13 +350,13 @@ class SupabaseBackup(BackupHandler):
             files += 1
             self.log(f"RLS Policies exportiert: {rls_file}")
         else:
-            self.log(f"WARNING: RLS Policy Export: {result.stderr}")
+            self.log(f"ERROR: RLS Policy Export: {result.stderr}")
 
         # Dump auth schema
         auth_file = os.path.join(config_dir, f"auth_schema_{timestamp}.sql")
         self.log("Exporting auth schema...")
         result = subprocess.run(
-            ['pg_dump', connection_string,
+            ['pg_dump', safe_connection,
              '--schema=auth', '--schema=storage',
              '-f', auth_file],
             capture_output=True, text=True, env=env, timeout=300
@@ -363,7 +367,7 @@ class SupabaseBackup(BackupHandler):
             files += 1
             self.log(f"Auth/Storage Schema exportiert: {auth_file}")
         else:
-            self.log(f"WARNING: Auth Schema Export: {result.stderr}")
+            self.log(f"ERROR: Auth Schema Export: {result.stderr}")
 
         return total_size, files
 
@@ -375,11 +379,11 @@ class SupabaseBackup(BackupHandler):
         """
         import re
         # Try pooler format: postgres.XXXXX:
-        match = re.search(r'postgres\.([a-z]+)[:@]', connection_string)
+        match = re.search(r'postgres\.([a-z0-9-]+)[:@]', connection_string)
         if match:
             return match.group(1)
         # Try direct format: db.XXXXX.supabase
-        match = re.search(r'db\.([a-z]+)\.supabase', connection_string)
+        match = re.search(r'db\.([a-z0-9-]+)\.supabase', connection_string)
         if match:
             return match.group(1)
         return ''
@@ -388,16 +392,18 @@ class SupabaseBackup(BackupHandler):
         """Simple GET request, returns parsed JSON or empty list."""
         req = Request(url, headers=headers, method='GET')
         try:
-            with urlopen(req, timeout=30) as resp:
+            # URLs are derived from the HTTPS Supabase API base.
+            with urlopen(req, timeout=30) as resp:  # nosec B310
                 return json.loads(resp.read().decode('utf-8'))
         except (HTTPError, URLError) as e:
-            self.log(f"WARNING: API GET {url} fehlgeschlagen: {e}")
-            return []
+            self.log(f"ERROR: API GET fehlgeschlagen: {e}")
+            raise
 
     def _download_file(self, url, headers, dest_path):
         """Download file from URL to dest_path."""
         req = Request(url, headers=headers, method='GET')
-        with urlopen(req, timeout=120) as resp:
+        # URLs are derived from the HTTPS Supabase API base.
+        with urlopen(req, timeout=120) as resp:  # nosec B310
             with open(dest_path, 'wb') as f:
                 shutil.copyfileobj(resp, f)
 
@@ -409,7 +415,11 @@ class SupabaseBackup(BackupHandler):
         """Map a Storage object key to disk without allowing path traversal."""
         real_bucket_dir = os.path.realpath(bucket_dir)
         real_target = os.path.realpath(os.path.join(bucket_dir, object_name))
-        if not real_target.startswith(real_bucket_dir + os.sep):
+        try:
+            inside = os.path.commonpath((real_bucket_dir, real_target)) == real_bucket_dir
+        except ValueError:
+            inside = False
+        if not inside or real_target == real_bucket_dir:
             raise Exception(f"Unsicherer Storage-Objektpfad: {object_name}")
         return real_target
 
