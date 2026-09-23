@@ -3,9 +3,9 @@ Backup Executor
 Coordinates backup operations across multiple sources
 """
 import logging
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
-import re
 import shutil
 
 from app import db
@@ -17,7 +17,9 @@ from app.time_utils import utc_now_naive
 from app.runtime_settings import backup_root_path
 from app.backup.sources.smb import SMBBackup
 from app.backup.sources.github import GitHubBackup
-from app.backup.sources.git_archive import MIRROR_DIRNAME
+from app.backup.artifacts import (
+    DEFAULT_BACKUP_RETENTION_COUNT, TIMESTAMP_FORMAT, RunArtifact, select_expired,
+)
 from app.backup.sources.rclone import RcloneBackup
 from app.backup.sources.local import LocalBackup
 from app.backup.sources.git import (
@@ -38,10 +40,6 @@ from app.backup.sources.supabase import SupabaseBackup
 from app.notifications.manager import NotificationManager
 
 logger = logging.getLogger(__name__)
-
-# Directory names inside a source folder that hold incremental working state
-# rather than backup versions. Retention must never delete these.
-WORKING_DIR_NAMES = {MIRROR_DIRNAME}
 
 
 class BackupExecutor:
@@ -464,12 +462,22 @@ class BackupExecutor:
                     raise ValueError(f"Unsupported source type: {source_type}")
 
                 # Create destination path
-                dest_path = source_backup_path(self.backup_base_path, source_id)
-                os.makedirs(dest_path, exist_ok=True)
-                logger.info(f"Backup destination: {dest_path}")
+                source_dir = source_backup_path(self.backup_base_path, source_id)
+                os.makedirs(source_dir, exist_ok=True)
+
+                # The handler writes into a per-run staging (or sync) directory;
+                # the run becomes exactly one timestamped artifact afterwards.
+                handler = handler_class(source, source_dir)
+                artifact = RunArtifact(
+                    source_dir,
+                    source_id,
+                    datetime.now().strftime(TIMESTAMP_FORMAT),
+                    handler.artifact_mode(),
+                )
+                handler.dest_path = artifact.prepare()
+                logger.info(f"Backup destination: {handler.dest_path} ({artifact.mode})")
 
                 # Execute backup with live log flushing to DB
-                handler = handler_class(source, dest_path)
 
                 def _flush_logs(logs_text, _result=result):
                     try:
@@ -479,7 +487,12 @@ class BackupExecutor:
                         pass
 
                 handler._live_log_callback = _flush_logs
-                backup_result = normalize_backup_result(handler.backup())
+                try:
+                    backup_result = normalize_backup_result(handler.backup())
+                except BaseException:
+                    artifact.discard()
+                    raise
+                artifact_log = artifact.finalize(backup_result['status'])
                 # Retention also has to run when the handler failed - see the
                 # finally block. A source that keeps failing would otherwise
                 # never rotate and grow without limit.
@@ -494,7 +507,7 @@ class BackupExecutor:
                 result.progress = 100
                 result.error_message = '; '.join(backup_result['errors'][:5]) or None
                 result.logs = '\n'.join(
-                    part for part in [backup_result.get('logs', ''), cleanup_logs]
+                    part for part in [backup_result.get('logs', ''), artifact_log, cleanup_logs]
                     if part
                 )
 
@@ -559,46 +572,27 @@ class BackupExecutor:
             logger.warning(f"Cleanup skipped for unsafe source path: {source_dir}")
             return 'Cleanup übersprungen: unsicherer Quellpfad'
 
-        versioned_entries = {}
-        for name in os.listdir(source_dir):
-            path = os.path.join(source_dir, name)
-            if name.endswith('_restore_tmp'):
-                continue
-            # Incremental working copies (e.g. GitHub mirrors) are not backup
-            # versions: deleting them would force a full re-clone next run.
-            if name in WORKING_DIR_NAMES:
-                continue
-            # Partial artifacts from an interrupted run must never count as a
-            # kept version.
-            if name.startswith('.'):
-                continue
-            match = re.search(r'(\d{8}_\d{6})', name)
-            if not match:
-                continue
-            versioned_entries.setdefault(match.group(1), []).append(path)
-
-        if len(versioned_entries) <= keep_count:
+        expired = select_expired(os.listdir(source_dir), keep_count)
+        if not expired:
             return ''
 
-        timestamps = sorted(versioned_entries.keys(), reverse=True)
-        delete_timestamps = timestamps[keep_count:]
         deleted = 0
         errors = []
 
-        for timestamp in delete_timestamps:
-            for path in versioned_entries[timestamp]:
-                real_path = os.path.realpath(path)
-                if not real_path.startswith(real_source_dir + os.sep):
-                    errors.append(f"unsicherer Pfad übersprungen: {path}")
-                    continue
-                try:
-                    if os.path.isdir(path):
-                        shutil.rmtree(path)
-                    else:
-                        os.unlink(path)
-                    deleted += 1
-                except OSError as e:
-                    errors.append(f"{os.path.basename(path)}: {e}")
+        for name in expired:
+            path = os.path.join(source_dir, name)
+            real_path = os.path.realpath(path)
+            if not real_path.startswith(real_source_dir + os.sep):
+                errors.append(f"unsicherer Pfad übersprungen: {path}")
+                continue
+            try:
+                if os.path.isdir(path):
+                    shutil.rmtree(path)
+                else:
+                    os.unlink(path)
+                deleted += 1
+            except OSError as e:
+                errors.append(f"{os.path.basename(path)}: {e}")
 
         message = (
             f"Cleanup: {deleted} alte Backup-Artefakte entfernt "
@@ -618,8 +612,8 @@ class BackupExecutor:
     def _backup_retention_count(self):
         value = Setting.get('backup_retention_count')
         if value is None:
-            value = os.environ.get('BACKUP_RETENTION_COUNT', '10')
+            value = os.environ.get('BACKUP_RETENTION_COUNT', DEFAULT_BACKUP_RETENTION_COUNT)
         try:
             return max(1, int(value))
         except (TypeError, ValueError):
-            return 10
+            return DEFAULT_BACKUP_RETENTION_COUNT

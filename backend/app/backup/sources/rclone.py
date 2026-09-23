@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 class RcloneBackup(BackupHandler):
     """Handles cloud storage backups using rclone"""
 
+    ARTIFACT_MODE = 'snapshot'
+
     def backup(self):
         """Execute rclone backup"""
         remote = self.source_config.get('remote')

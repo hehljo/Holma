@@ -1,5 +1,5 @@
 """
-Notification System for BackupGenie
+Notification System for Holma
 Supports multiple notification channels with best practices (11/2025)
 """
 from .manager import NotificationManager

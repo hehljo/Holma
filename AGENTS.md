@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Lokale Arbeitsanweisungen für `/root/BackupGenie`. Globale Regeln aus `/root/.codex/AGENTS.md` gelten weiter und haben Vorrang.
+Lokale Arbeitsanweisungen für `/root/Holma`. Globale Regeln aus `/root/.codex/AGENTS.md` gelten weiter und haben Vorrang.
 
 ## Projektbild
 
-- BackupGenie ist ein selbst gehosteter Multi-Source-Backup-Manager.
+- Holma ist ein selbst gehosteter Multi-Source-Backup-Manager.
 - Backend: Flask 3.1, SQLAlchemy, SQLite, Gunicorn, Blueprints unter `/api/v1`.
 - Frontend: React 18, Vite, Tailwind CSS, i18next, lucide-react.
 - Deployment: Docker Compose, Synology/Portainer, Raspberry Pi und generische Linux/Docker-Hosts.

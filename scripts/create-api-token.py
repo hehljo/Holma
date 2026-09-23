@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactively create and store a BackupGenie automation token."""
+"""Interactively create and store a Holma automation token."""
 
 import argparse
 import getpass
@@ -57,7 +57,7 @@ def _store_token(output_path, token):
         )
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     descriptor, temporary_name = tempfile.mkstemp(
-        prefix='.backupgenie-token-', dir=str(target.parent)
+        prefix='.holma-token-', dir=str(target.parent)
     )
     try:
         os.fchmod(descriptor, 0o600)
@@ -77,7 +77,7 @@ def _store_token(output_path, token):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Create a password-bound BackupGenie automation token.'
+        description='Create a password-bound Holma automation token.'
     )
     parser.add_argument(
         '--api-url',
@@ -87,7 +87,7 @@ def main():
     parser.add_argument('--username', default='admin')
     parser.add_argument('--expires-days', type=int, default=365)
     parser.add_argument(
-        '--output', default='/etc/backupgenie/api_token'
+        '--output', default='/etc/holma/api_token'
     )
     args = parser.parse_args()
 

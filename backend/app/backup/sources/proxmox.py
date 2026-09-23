@@ -12,6 +12,7 @@ import time
 import requests
 import re
 from app.backup.base import BackupHandler
+from app.brand import BRAND_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,9 @@ class ProxmoxBackup(BackupHandler):
     - 'api': Uses Proxmox REST API (recommended, works remote)
     - 'cli': Uses vzdump CLI directly (must run on PVE host)
     """
+
+    # vzdump output is large and already compressed.
+    ARTIFACT_MODE = 'folder'
 
     def backup(self):
         """Execute Proxmox VE backup"""
@@ -104,7 +108,7 @@ class ProxmoxBackup(BackupHandler):
                     'mode': options.get('mode', 'snapshot'),  # snapshot, suspend, stop
                     'compress': options.get('compress', 'zstd'),
                     'remove': 0,  # Don't remove old backups
-                    'notes-template': f'BackupGenie auto-backup {time.strftime("%Y-%m-%d")}',
+                    'notes-template': f'{BRAND_NAME} auto-backup {time.strftime("%Y-%m-%d")}',
                 }
 
                 # Set storage target

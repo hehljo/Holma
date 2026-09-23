@@ -1,6 +1,6 @@
 # Supabase Wiederherstellung - Schritt für Schritt
 
-Diese Anleitung beschreibt, wie du ein BackupGenie-Supabase-Backup in ein neues (oder bestehendes) Supabase-Projekt wiederherstellst.
+Diese Anleitung beschreibt, wie du ein Holma-Supabase-Backup in ein neues (oder bestehendes) Supabase-Projekt wiederherstellst.
 
 ---
 
@@ -295,7 +295,7 @@ END $$;
 
 ## Automatischer Restore
 
-BackupGenie erstellt ausschließlich Backups. Die Wiederherstellung erfolgt **bewusst manuell**, da:
+Holma erstellt ausschließlich Backups. Die Wiederherstellung erfolgt **bewusst manuell**, da:
 
 1. **Sicherheit:** Ein automatischer Restore könnte versehentlich Produktionsdaten überschreiben
 2. **Kontrolle:** Bei der Wiederherstellung müssen oft projektspezifische Anpassungen gemacht werden (Owner, Rollen, Extensions)

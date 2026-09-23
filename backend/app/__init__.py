@@ -1,5 +1,5 @@
 """
-BackupGenie - Automated Multi-Source Backup Manager
+Holma - Automated Multi-Source Backup Manager
 Main Application Module
 """
 from flask import Flask, request, jsonify
@@ -17,6 +17,7 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 from werkzeug.middleware.proxy_fix import ProxyFix
 from app.config import Config
+from app.version import APP_VERSION
 
 db = SQLAlchemy()
 babel = Babel()
@@ -231,13 +232,13 @@ def create_app(config_class=Config):
             db_status = f'error: {str(e)}'
             return jsonify({
                 'status': 'unhealthy',
-                'version': '1.7.0',
+                'version': APP_VERSION,
                 'database': db_status
             }), 503
 
         return jsonify({
             'status': 'healthy',
-            'version': '1.7.0',
+            'version': APP_VERSION,
             'database': db_status
         }), 200
 

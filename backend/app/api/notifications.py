@@ -6,6 +6,7 @@ from app.notifications.manager import NotificationManager
 from app import limiter
 from app.api.auth import admin_required
 import logging
+from app.brand import BRAND_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def test_notification(current_user):
             # Test all channels
             results = manager.notify(
                 title="🧪 Test Notification",
-                message="This is a test notification from BackupGenie. Your notification system is working correctly!",
+                message=f"This is a test notification from {BRAND_NAME}. Your notification system is working correctly!",
             )
 
             return jsonify({

@@ -20,9 +20,9 @@
       "priority": 2,
       "config": {
         "host": "diskstation",
-        "share": "backupgenie-test",
+        "share": "holma-test",
         "path": "optional/subfolder",
-        "username": "backupgenie",
+        "username": "holma",
         "credentials": {
           "password_env": "SMB_PASSWORD"
         },
@@ -41,9 +41,9 @@
       "config": {
         "host": "diskstation",
         "port": 22,
-        "path": "/volume1/backupgenie-test",
-        "username": "backupgenie",
-        "ssh_key_path": "/run/secrets/backupgenie_ssh_key",
+        "path": "/volume1/holma-test",
+        "username": "holma",
+        "ssh_key_path": "/run/secrets/holma_ssh_key",
         "options": {
           "delete": false,
           "strict_host_key_checking": true

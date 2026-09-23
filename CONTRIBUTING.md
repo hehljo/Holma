@@ -1,4 +1,4 @@
-# Contributing to BackupGenie
+# Contributing to Holma
 
 Thanks for considering a contribution! This document outlines the process for filing issues and submitting pull requests.
 
@@ -6,7 +6,7 @@ Thanks for considering a contribution! This document outlines the process for fi
 
 **Bug reports:** use the bug report template. Include:
 
-- BackupGenie version
+- Holma version
 - Deployment platform (Synology / Pi / Linux / Docker)
 - Steps to reproduce
 - Expected vs actual behavior

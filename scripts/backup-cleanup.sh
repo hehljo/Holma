@@ -1,10 +1,10 @@
 #!/bin/bash
-# BackupGenie - Cleanup Script
+# Holma - Cleanup Script
 # Removes old backups and logs based on retention policy
 
 set -e
 
-LOG_FILE="/var/log/backupgenie-cleanup.log"
+LOG_FILE="/var/log/holma-cleanup.log"
 BACKUP_BASE_PATH="${BACKUP_BASE_PATH:-/mnt/backup}"
 RETENTION_DAYS="${LOG_RETENTION_DAYS:-30}"
 DRY_RUN="${DRY_RUN:-false}"
@@ -22,8 +22,8 @@ fi
 
 # Cleanup old log files
 log "Cleaning up old log files..."
-if [ -d "/var/log/backupgenie" ]; then
-    find_cmd="find /var/log/backupgenie -name '*.log' -type f -mtime +$RETENTION_DAYS"
+if [ -d "/var/log/holma" ]; then
+    find_cmd="find /var/log/holma -name '*.log' -type f -mtime +$RETENTION_DAYS"
 
     if [ "$DRY_RUN" = "true" ]; then
         count=$(eval "$find_cmd" | wc -l)
@@ -36,9 +36,9 @@ if [ -d "/var/log/backupgenie" ]; then
 fi
 
 # Cleanup database entries via API (if available)
-if docker ps | grep -q backupgenie-backend; then
+if docker ps | grep -q holma-backend; then
     log "Cleaning up old database entries..."
-    docker exec backupgenie-backend python3 -c "
+    docker exec holma-backend python3 -c "
 from app import create_app, db
 from app.models.backup import Backup
 from datetime import datetime, timedelta

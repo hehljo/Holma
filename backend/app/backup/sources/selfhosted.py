@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 class SelfHostedBackup(BackupHandler):
     """Generic self-hosted service backup handler"""
 
+    def artifact_mode(self):
+        options = self.source_config.get('options', {}) or {}
+        method = options.get('backup_method') or self.source_config.get(
+            'backup_method', 'docker-volume'
+        )
+        return 'snapshot' if method == 'rsync' else 'archive'
+
     def backup(self):
         """Execute self-hosted service backup"""
         service_type = self.source_config.get('type', 'unknown')

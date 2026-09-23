@@ -1,6 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
+import { BRAND } from './brand';
 
 // Translation resources
 import translationEN from './locales/en/translation.json';
@@ -27,7 +28,8 @@ i18n
     debug: false,
 
     interpolation: {
-      escapeValue: false // React already escapes values
+      escapeValue: false, // React already escapes values
+      defaultVariables: { brand: BRAND.name },
     },
 
     // Language detector options

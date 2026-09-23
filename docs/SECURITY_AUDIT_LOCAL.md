@@ -1,4 +1,4 @@
-# BackupGenie – interner Sicherheits- und Funktionsaudit
+# Holma – interner Sicherheits- und Funktionsaudit
 
 Stand: 01.09.2026  
 Status: Lokale Remediation abgeschlossen; reale Zielsystemtests offen  
@@ -6,7 +6,7 @@ Veröffentlichung: Erst nach den vereinbarten DiskStation-Live-Gates.
 
 ## Ziel
 
-Dieser Audit bewertet, ob BackupGenie Backups und Restores korrekt, nachvollziehbar
+Dieser Audit bewertet, ob Holma Backups und Restores korrekt, nachvollziehbar
 und ohne unnötiges Risiko ausführt. Die Liste ist zugleich die verbindliche
 Remediation-Checkliste. Ein Punkt gilt erst als erledigt, wenn Codefix und passende
 Regressionstests grün sind.

@@ -4,6 +4,7 @@ import { authAPI } from '../services/api'
 import { useTranslation } from 'react-i18next'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 import PropTypes from 'prop-types'
+import { BRAND } from '../brand'
 
 export default function Login({ onLogin }) {
   const { t } = useTranslation()
@@ -38,7 +39,8 @@ export default function Login({ onLogin }) {
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <img src="/logo-wordmark.png" alt={t('app.name')} className="h-auto w-72 max-w-full mb-4" />
+          <img src={BRAND.logoMark} alt="" className="h-20 w-auto mb-3" />
+          <h1 className="text-3xl font-bold text-gray-900">{t('app.name')}</h1>
           <p className="text-gray-600 mt-2">{t('app.tagline')}</p>
         </div>
 

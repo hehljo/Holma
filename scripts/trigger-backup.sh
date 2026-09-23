@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# BackupGenie - USB Auto-Backup Trigger Script
+# Holma - USB Auto-Backup Trigger Script
 # Triggered by systemd/udev when a USB drive is connected
 #
 # Features:
@@ -16,9 +16,9 @@ set -euo pipefail
 # --- Configuration ---
 BACKUP_MOUNT="${BACKUP_MOUNT:-/mnt/backup}"
 API_URL="${BACKUP_API_URL:-http://localhost:5000/api/v1/backup/start}"
-TOKEN_FILE="${BACKUP_TOKEN_FILE:-/etc/backupgenie/api_token}"
-LOG_DIR="${BACKUP_LOG_DIR:-/var/log/backupgenie}"
-LOCK_FILE="/var/run/backupgenie-trigger.lock"
+TOKEN_FILE="${BACKUP_TOKEN_FILE:-/etc/holma/api_token}"
+LOG_DIR="${BACKUP_LOG_DIR:-/var/log/holma}"
+LOCK_FILE="/var/run/holma-trigger.lock"
 MIN_FREE_SPACE_MB="${MIN_FREE_SPACE_MB:-500}"
 MAX_RETRIES=5
 RETRY_DELAY=3
@@ -70,8 +70,8 @@ detect_and_mount() {
 
     # If no device specified, try to find backup partition by label
     if [[ -z "$DEVICE" ]]; then
-        log "INFO" "No device specified, looking for labeled partition 'BACKUP' or 'backupgenie'"
-        DEVICE=$(blkid -L "BACKUP" 2>/dev/null || blkid -L "backupgenie" 2>/dev/null || true)
+        log "INFO" "No device specified, looking for labeled partition 'BACKUP' or 'holma'"
+        DEVICE=$(blkid -L "BACKUP" 2>/dev/null || blkid -L "holma" 2>/dev/null || true)
         if [[ -z "$DEVICE" ]]; then
             log "ERROR" "No backup device found. Label a partition 'BACKUP' or pass device as argument."
             exit 1
@@ -144,13 +144,13 @@ check_free_space() {
 
 check_backend_ready() {
     # Check if the Docker container is running
-    if ! docker ps --filter "name=backupgenie" --filter "status=running" -q | grep -q .; then
-        log "WARN" "BackupGenie backend container not running, waiting..."
+    if ! docker ps --filter "name=holma" --filter "status=running" -q | grep -q .; then
+        log "WARN" "Holma backend container not running, waiting..."
         local waited=0
         while [[ $waited -lt 60 ]]; do
             sleep 5
             waited=$((waited + 5))
-            if docker ps --filter "name=backupgenie" --filter "status=running" -q | grep -q .; then
+            if docker ps --filter "name=holma" --filter "status=running" -q | grep -q .; then
                 log "INFO" "Backend container is now running"
                 return 0
             fi
@@ -190,7 +190,7 @@ trigger_backup() {
 
             # Send desktop notification if available
             if command -v notify-send &>/dev/null; then
-                notify-send "BackupGenie" "Backup started automatically" --icon=drive-harddisk 2>/dev/null || true
+                notify-send "Holma" "Backup started automatically" --icon=drive-harddisk 2>/dev/null || true
             fi
 
             return 0
@@ -209,7 +209,7 @@ trigger_backup() {
 
     # Send failure notification
     if command -v notify-send &>/dev/null; then
-        notify-send "BackupGenie" "Auto-backup failed to start!" --icon=dialog-error --urgency=critical 2>/dev/null || true
+        notify-send "Holma" "Auto-backup failed to start!" --icon=dialog-error --urgency=critical 2>/dev/null || true
     fi
 
     return 1
@@ -220,7 +220,7 @@ trigger_backup() {
 # Ensure log directory exists
 mkdir -p "$LOG_DIR"
 
-log "INFO" "=== BackupGenie trigger started ==="
+log "INFO" "=== Holma trigger started ==="
 log "INFO" "Device: ${DEVICE:-auto-detect}"
 
 # Prevent concurrent executions
@@ -247,4 +247,4 @@ fi
 # Trigger the backup
 trigger_backup
 
-log "INFO" "=== BackupGenie trigger completed ==="
+log "INFO" "=== Holma trigger completed ==="

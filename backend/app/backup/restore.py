@@ -130,6 +130,9 @@ class SupabaseRestore:
                     working_dir = os.path.join(extract_dir, subdirs[0])
                 else:
                     working_dir = extract_dir
+                # A run archive (<source>_<timestamp>.tar.gz) wraps the
+                # handler's own supabase_<ref>_<timestamp>.tar.gz.
+                working_dir = self._unwrap_nested_archive(working_dir, extract_dir)
             except Exception:
                 shutil.rmtree(extract_dir, ignore_errors=True)
                 temp_extracted = False
@@ -241,6 +244,26 @@ class SupabaseRestore:
             # Cleanup temp extraction
             if temp_extracted and os.path.isdir(extract_dir):
                 shutil.rmtree(extract_dir, ignore_errors=True)
+
+    def _unwrap_nested_archive(self, working_dir, extract_dir):
+        """Extract a single inner tar.gz when the dump files are not at top level."""
+        if glob.glob(os.path.join(working_dir, 'schema_*.sql')):
+            return working_dir
+        inner = [
+            name for name in os.listdir(working_dir)
+            if name.endswith('.tar.gz') and not name.startswith('.')
+        ]
+        if len(inner) != 1:
+            return working_dir
+        inner_dir = os.path.join(extract_dir, '_inner')
+        os.makedirs(inner_dir)
+        with tarfile.open(os.path.join(working_dir, inner[0]), 'r:gz') as tar:
+            _safe_extract(tar, inner_dir)
+        subdirs = [d for d in os.listdir(inner_dir)
+                   if os.path.isdir(os.path.join(inner_dir, d))]
+        if len(subdirs) == 1:
+            return os.path.join(inner_dir, subdirs[0])
+        return inner_dir
 
     def _run_psql(self, connection_string, sql_file, timeout=3600):
         """Run psql with a SQL file against connection"""

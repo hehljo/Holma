@@ -1,14 +1,14 @@
 #!/bin/bash
 ################################################################################
-# BackupGenie Quick Deploy v1.5 - Multi-Architecture Support
+# Holma Quick Deploy v1.5 - Multi-Architecture Support
 # One-Command Installation für schnelles Deployment
 ################################################################################
 
 set -e
 
 VERSION="1.5"
-REPO_URL="${REPO_URL:-https://github.com/hehljo/BackupGenie.git}"
-INSTALL_DIR="${INSTALL_DIR:-/opt/BackupGenie}"
+REPO_URL="${REPO_URL:-https://github.com/hehljo/Holma.git}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/Holma}"
 BRANCH="${BRANCH:-main}"
 
 # Colors
@@ -30,7 +30,7 @@ trap 'error_exit "Unknown step"' ERR
 echo "Starting Quick Deploy..."
 echo ""
 echo -e "${BLUE}╔════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║  BackupGenie Quick Deploy v${VERSION}         ║${NC}"
+echo -e "${BLUE}║  Holma Quick Deploy v${VERSION}         ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════╝${NC}\n"
 
 # 1. System Update

@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "BackupGenie",
+    "name": "{{brand}}",
     "tagline": "Automatisierter Multi-Quellen Backup Manager",
     "shortDescription": "Backup-Manager"
   },
@@ -118,9 +118,9 @@
     "logRetention": "Log-Aufbewahrung (Tage)",
     "logRetentionHint": "Wie lange Backup-Logs aufgehoben werden",
     "backupRetentionCount": "Backup-Versionen pro Quelle",
-    "backupRetentionCountHint": "Wie viele timestamp-basierte Backup-Versionen je Quelle aufgehoben werden. Sync-/Mirror-Quellen überschreiben in der Regel denselben Zielordner.",
+    "backupRetentionCountHint": "Jeder Lauf wird als eine Version mit Zeitstempel abgelegt: kleine Quellen als .tar.gz-Archiv, große Dateiquellen (NAS, rsync, Cloud) als Snapshot-Ordner, in dem unveränderte Dateien keinen zusätzlichen Platz belegen. So viele Versionen bleiben je Quelle erhalten.",
     "autoCleanup": "Automatische Backup-Bereinigung",
-    "autoCleanupHint": "Nach erfolgreichem Backup ältere timestamp-basierte Artefakte entfernen. Aktuell werden {{count}} Versionen je Quelle behalten.",
+    "autoCleanupHint": "Nach jedem Backup die ältesten Versionen entfernen. Aktuell werden {{count}} Versionen je Quelle behalten.",
     "user": "Benutzereinstellungen",
     "username": "Benutzername",
     "currentPassword": "Aktuelles Passwort",

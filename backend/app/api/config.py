@@ -16,6 +16,7 @@ from app.source_config import (
 from app.backup.paths import validate_source_id
 from app.config import Config
 from app.time_utils import utc_iso_z, utc_now_naive
+from app.backup.artifacts import DEFAULT_BACKUP_RETENTION_COUNT
 from app.runtime_settings import backup_root_path, get_setting
 
 config_bp = Blueprint('config', __name__)
@@ -61,7 +62,7 @@ def export_config(current_user):
             'log_retention_days': int(get_setting(
                 'log_retention_days', Config.LOG_RETENTION_DAYS
             )),
-            'backup_retention_count': int(get_setting('backup_retention_count', 10)),
+            'backup_retention_count': int(get_setting('backup_retention_count', DEFAULT_BACKUP_RETENTION_COUNT)),
             'auto_cleanup': str(get_setting('auto_cleanup', 'true')).lower() == 'true',
         }
 

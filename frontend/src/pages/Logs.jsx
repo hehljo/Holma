@@ -3,6 +3,7 @@ import { FileText, RefreshCw, Trash2, Download, ArrowDown } from 'lucide-react'
 import { settingsAPI } from '../services/api'
 import { useTranslation } from 'react-i18next'
 import toast from 'react-hot-toast'
+import { BRAND } from '../brand'
 
 export default function Logs() {
   const { t } = useTranslation()
@@ -53,7 +54,7 @@ export default function Logs() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `backupgenie_${new Date().toISOString().slice(0, 10)}.log`
+    a.download = `${BRAND.slug}_${new Date().toISOString().slice(0, 10)}.log`
     a.click()
     URL.revokeObjectURL(url)
   }

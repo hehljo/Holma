@@ -37,6 +37,13 @@ class SuccessfulHandler(BackupHandler):
         return {'files_synced': 1, 'size_synced': 12, 'logs': 'ok'}
 
 
+class FileWritingHandler(BackupHandler):
+    def backup(self):
+        with open(os.path.join(self.dest_path, 'dump.sql'), 'w') as fh:
+            fh.write('-- dump\n')
+        return {'files_synced': 1, 'size_synced': 8, 'logs': 'ok'}
+
+
 class BackupJobTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -158,6 +165,26 @@ class BackupJobTests(unittest.TestCase):
         self.assertEqual(stored.total_size, 12)
         self.assertEqual(len(stored.source_results), 1)
         self.assertEqual(stored.source_results[0].status, 'completed')
+
+    def test_run_output_becomes_one_timestamped_archive(self):
+        backup, _ = reserve_backup(self.sources, ['source-a'], parallel=1)
+        claim_next_backup()
+        executor = BackupExecutor(
+            backup.backup_id, enable_notifications=False, app=self.app
+        )
+        executor.backup_base_path = self.temp_dir.name
+        executor.handlers = {'test': FileWritingHandler}
+        executor.load_sources = lambda: self.sources
+
+        executor.execute(parallel=1)
+
+        entries = os.listdir(os.path.join(self.temp_dir.name, 'source-a'))
+        self.assertEqual(len(entries), 1, entries)
+        self.assertRegex(entries[0], r'^source-a_\d{8}_\d{6}\.tar\.gz$')
+        db.session.expire_all()
+        result = Backup.query.filter_by(backup_id=backup.backup_id).one().source_results[0]
+        self.assertEqual(result.status, 'completed')
+        self.assertIn('Backup-Artefakt: source-a_', result.logs)
 
     def test_parallel_request_is_validated_and_capped(self):
         db.session.add(Setting(key='max_parallel_tasks', value='2'))

@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="icon/README-Logo.png" alt="BackupGenie" width="560" />
+<img src="frontend/public/logo-mark.png" alt="" width="120" />
+
+# Holma
 
 ### Automated Multi-Source Backup Manager
 
@@ -23,13 +25,23 @@ A self-hosted backup manager with a modern web UI for 35 standard source types i
 
 ---
 
+## 🗣️ Why "Holma"?
+
+In Augsburg, nobody says *"Could you please go and fetch that?"*. They say **"Hol ma!"** — short for *"hol mal"* / *"holen wir"*: *go get it*, or *let's go get it*. One word, no fuss, and it gets done.
+
+That is the whole job description. Holma goes out to your NAS, your GitHub repositories, your Supabase projects, your databases and your cloud drives, **fetches everything home**, and puts it on the shelf with a date on it — three versions deep, oldest one out when a new one comes in.
+
+It does not ask twice, and it does not bring back half the fridge. Passt scho.
+
+---
+
 ## 🧪 Test Status
 
 > `✅ Live` bezeichnet einen echten Zielsystemtest. `✅ Auto` bezeichnet grüne Unit-/Fehlerpfad-/Image-Tests; der reale Zielsystemtest ist dort noch offen. `🔲` ist noch nicht belastbar geprüft.
 >
 > Historische Live-Ergebnisse wurden noch nicht gegen den aktuellen Remediation-Build wiederholt. Aktuelle Details stehen in `docs/SECURITY_AUDIT_LOCAL.md`.
 >
-> Lokaler Gesamtgate (01.09.2026): 60/60 Backend-Tests, Frontend-Lint und Produktionsbuild grün; npm/pip ohne bekannte Schwachstellen, Bandit ohne hohe oder mittlere Funde.
+> Lokaler Gesamtgate (23.09.2026): `scripts/run-gates.sh` — 8 Backend-Gates, Marken-/Versions-Gate, Frontend-Lint und Produktionsbuild grün. Läuft in CI vor jedem Image-Build.
 
 | Source | Backup | Restore | Notes |
 |--------|--------|---------|-------|
@@ -61,7 +73,7 @@ A self-hosted backup manager with a modern web UI for 35 standard source types i
 | Portainer Status (`9000`) | ✅ Live | API erreichbar; `9443` auf dieser NAS geschlossen |
 | DiskStation Docker-Engine | 🔲 | SSH-Port geschlossen; read-only API-Zugang noch nötig |
 
-If you've tested a source, please [share your setup](https://github.com/hehljo/BackupGenie/discussions) — it helps others a lot.
+If you've tested a source, please [share your setup](https://github.com/hehljo/Holma/discussions) — it helps others a lot.
 
 ---
 
@@ -71,7 +83,7 @@ If you've tested a source, please [share your setup](https://github.com/hehljo/B
 - **Reliable Container Startup:** database/bootstrap initialization is serialized across Gunicorn workers and the backup worker.
 - **Automation Tokens:** USB/systemd jobs can use password-bound tokens that expire after at most 365 days and are revoked by password changes.
 - **Adaptive UI:** The web UI now has consistent touch targets, visible focus states, responsive page shells, mobile-friendly drawers, bottom-sheet modals, and safer wrapping for backup/source lists.
-- **Backup Retention:** Settings now include automatic cleanup plus configurable backup versions per source. Cleanup only removes older timestamp-based artifacts after successful backups; sync/mirror targets are left alone.
+- **One Archive per Run:** Every backup run becomes exactly one timestamped version per source, and the newest **3** are kept by default (configurable). Small sources (GitHub, GitLab, Gitea, databases, Supabase, Docker, self-hosted apps) become one `.tar.gz` per run with one archive per repository inside. Large file sources (NFS, rsync, rclone, FTP/SFTP, WebDAV, local folders) become snapshot folders where unchanged files are hard links, so three versions of a 100 GB share cost 100 GB plus the changes. NAS via SMB and Proxmox dumps are already one full archive per run and are stored as-is in a timestamped folder (no second compression) — with SMB, each version is a full copy. Failed runs never replace a good version.
 - **Source Handler Compatibility:** Non-GitHub/Supabase handlers now accept UI-created list fields, direct credentials, and path fallbacks more robustly across local, database, Docker, FTP/SFTP, WebDAV, rclone, rsync, self-hosted, and Proxmox sources.
 - **i18n Cleanup:** The language selector is always visible and common Settings/Storage/Config dialogs now use localized English/German strings.
 - **Dark Mode:** The web UI now follows the system theme on first load, keeps manual theme changes, and includes dark-safe colors for forms, cards, modals, badges, logs, and notifications.
@@ -121,6 +133,22 @@ If you've tested a source, please [share your setup](https://github.com/hehljo/B
 
 ---
 
+### 🗂️ How backups are stored
+
+```
+/mnt/backup/<source-id>/
+  <source-id>_20260923_020000.tar.gz   <- small sources: one archive per run
+  <source-id>_20260924_020000.tar.gz      (GitHub: one repo archive per repository inside)
+  _mirrors/                            <- Git working copies, only new commits are fetched
+
+/mnt/backup/<nas-source>/
+  <nas-source>_20260923_020000/        <- large sources: snapshot folder per run,
+  <nas-source>_20260924_020000/           unchanged files are hard links
+  _current/                            <- incremental sync target
+```
+
+Retention keeps the newest *N* versions per source (Settings → Storage, default 3). Working folders (`_mirrors`, `_current`) are never rotated.
+
 ## 🚀 Quick Start
 
 > [!NOTE]
@@ -129,15 +157,15 @@ If you've tested a source, please [share your setup](https://github.com/hehljo/B
 ### One-line install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hehljo/BackupGenie/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hehljo/Holma/main/install.sh | bash
 ```
 
 ### Manual setup
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/hehljo/BackupGenie.git
-cd BackupGenie
+git clone https://github.com/hehljo/Holma.git
+cd Holma
 
 # 2. Set SECRET_KEY (mandatory)
 export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
@@ -217,7 +245,7 @@ Compose: 2.0+
 ## 🚀 Installation
 
 > [!TIP]
-> BackupGenie detects your hardware automatically and adjusts resources (workers, RAM limits, parallel tasks) on its own.
+> Holma detects your hardware automatically and adjusts resources (workers, RAM limits, parallel tasks) on its own.
 
 ### 📦 Synology NAS / Portainer
 
@@ -227,7 +255,7 @@ Compose: 2.0+
 #### 1. Create folders on the Diskstation (SSH)
 
 ```bash
-sudo mkdir -p /volume1/docker/backupgenie/{config,data,logs,backup}
+sudo mkdir -p /volume1/docker/holma/{config,data,logs,backup}
 ```
 
 #### 2. Generate a SECRET_KEY
@@ -242,9 +270,9 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 
 | Field | Value |
 |-------|-------|
-| **Name** | `backupgenie` |
+| **Name** | `holma` |
 | **Build method** | Repository |
-| **Repository URL** | `https://github.com/hehljo/BackupGenie` |
+| **Repository URL** | `https://github.com/hehljo/Holma` |
 | **Repository reference** | `refs/heads/main` |
 | **Compose path** | `docker-compose.portainer.yml` |
 
@@ -269,7 +297,7 @@ FRONTEND_PORT=3080
 http://diskstation-ip:3080
 ```
 
-**Password:** generated randomly on first start. Find it in Portainer → container `backupgenie-backend` → **Logs** → search for `[INIT] Admin user created. Password:`
+**Password:** generated randomly on first start. Find it in Portainer → container `holma-backend` → **Logs** → search for `[INIT] Admin user created. Password:`
 
 Change the password immediately under **Settings → User**.
 
@@ -281,14 +309,14 @@ Change the password immediately under **Settings → User**.
 
 #### Updates
 
-In **Portainer** → stack `backupgenie` → **Update the stack** → **Re-pull image and redeploy**
+In **Portainer** → stack `holma` → **Update the stack** → **Re-pull image and redeploy**
 
 #### Synology notes
 
 - **Ports:** DSM occupies 5000/5001 — use `API_PORT=5050` and `FRONTEND_PORT=3080`
 - **Autostart after reboot:** handled automatically via `restart: unless-stopped`
-- **Permissions:** if you hit permission errors, run `sudo chown -R 1000:1000 /volume1/docker/backupgenie/`
-- **Persistent data:** everything under `/volume1/docker/backupgenie/` survives updates
+- **Permissions:** if you hit permission errors, run `sudo chown -R 1000:1000 /volume1/docker/holma/`
+- **Persistent data:** everything under `/volume1/docker/holma/` survives updates
 
 </details>
 
@@ -305,13 +333,13 @@ sudo usermod -aG docker $USER
 # Log in again so the group change takes effect
 ```
 
-#### 2. Install BackupGenie
+#### 2. Install Holma
 
 ```bash
 cd /opt
-sudo git clone https://github.com/hehljo/BackupGenie.git
-sudo chown -R $USER:$USER BackupGenie
-cd BackupGenie
+sudo git clone https://github.com/hehljo/Holma.git
+sudo chown -R $USER:$USER Holma
+cd Holma
 
 cp config/example.env .env
 cp config/sources-example.json config/sources.json
@@ -361,13 +389,13 @@ sudo usermod -aG docker pi
 sudo reboot
 ```
 
-#### 2. Install BackupGenie
+#### 2. Install Holma
 
 ```bash
 cd /opt
-sudo git clone https://github.com/hehljo/BackupGenie.git
-sudo chown -R pi:pi BackupGenie
-cd BackupGenie
+sudo git clone https://github.com/hehljo/Holma.git
+sudo chown -R pi:pi Holma
+cd Holma
 
 cp config/example.env .env
 cp config/sources-example.json config/sources.json
@@ -421,8 +449,8 @@ Detailed guide: [USB Auto-Trigger →](#usb-auto-trigger)
 <summary>For any platform with Docker</summary>
 
 ```bash
-git clone https://github.com/hehljo/BackupGenie.git
-cd BackupGenie
+git clone https://github.com/hehljo/Holma.git
+cd Holma
 cp config/example.env .env
 cp config/sources-example.json config/sources.json
 
@@ -439,7 +467,7 @@ docker compose up -d
 #### Portainer (without Synology)
 
 In Portainer → Stacks → Add Stack → Repository:
-1. Repository URL: `https://github.com/hehljo/BackupGenie`
+1. Repository URL: `https://github.com/hehljo/Holma`
 2. Compose path: `docker-compose.portainer.yml` (uses prebuilt GHCR images, no build needed)
 3. Set environment variables (at minimum `SECRET_KEY`)
 4. Deploy
@@ -481,7 +509,7 @@ In Portainer → Stacks → Add Stack → Repository:
 > [!NOTE]
 > **All your data survives a reinstall!**
 
-BackupGenie uses Docker volumes for persistent storage. During updates or reinstalls, the following data is preserved automatically:
+Holma uses Docker volumes for persistent storage. During updates or reinstalls, the following data is preserved automatically:
 
 **Persistent directories:**
 
@@ -508,12 +536,12 @@ BackupGenie uses Docker volumes for persistent storage. During updates or reinst
 **Create a full backup:**
 
 ```bash
-# Save BackupGenie configuration
-cd /opt/BackupGenie
-tar -czf backupgenie-config-$(date +%Y%m%d).tar.gz config/ data/ .env
+# Save Holma configuration
+cd /opt/Holma
+tar -czf holma-config-$(date +%Y%m%d).tar.gz config/ data/ .env
 
 # Copy to a safe location
-cp backupgenie-config-*.tar.gz /mnt/external-drive/
+cp holma-config-*.tar.gz /mnt/external-drive/
 ```
 
 **Restore after a fresh install:**
@@ -521,11 +549,11 @@ cp backupgenie-config-*.tar.gz /mnt/external-drive/
 ```bash
 # Fresh install
 cd /opt
-git clone https://github.com/hehljo/BackupGenie.git
-cd BackupGenie
+git clone https://github.com/hehljo/Holma.git
+cd Holma
 
 # Restore the backup
-tar -xzf /mnt/external-drive/backupgenie-config-*.tar.gz
+tar -xzf /mnt/external-drive/holma-config-*.tar.gz
 
 # Start the containers - all settings are back!
 docker compose up -d
@@ -545,7 +573,7 @@ Since v1.1 you can also export/import all settings directly from the web interfa
 
 ### Backup Sources
 
-BackupGenie exposes 35 source types supported by the standard image and web form. Configure them in `config/sources.json` or through the web UI:
+Holma exposes 35 source types supported by the standard image and web form. Configure them in `config/sources.json` or through the web UI:
 
 <details>
 <summary>📁 NAS (SMB)</summary>
@@ -630,7 +658,7 @@ Configuration is done through the Web UI:
 
 **Restore:** History → backup with the restore button → choose target profile → start restore. Manual connection string entry is also supported.
 
-**Storage restore:** enable "Storage-Objekte wiederherstellen" and provide a target Supabase profile or service role key. BackupGenie recreates missing buckets, uploads objects with upsert, and marks the restore as partial if individual Storage uploads fail. Older backups with legacy `_bucket_meta.json` bucket metadata remain supported.
+**Storage restore:** enable "Storage-Objekte wiederherstellen" and provide a target Supabase profile or service role key. Holma recreates missing buckets, uploads objects with upsert, and marks the restore as partial if individual Storage uploads fail. Older backups with legacy `_bucket_meta.json` bucket metadata remain supported.
 
 </details>
 
@@ -655,7 +683,7 @@ Configuration is done through the Web UI:
 
 **Configure rclone:**
 ```bash
-docker exec -it backupgenie-backend rclone config
+docker exec -it holma-backend rclone config
 ```
 
 The standard form exposes Google Drive, Dropbox, OneDrive, S3, Backblaze B2, iCloud, Box, MEGA and pCloud plus a generic rclone source.
@@ -743,8 +771,8 @@ sudo ./scripts/install-systemd.sh
 #### 3. Verify
 
 ```bash
-sudo systemctl start backupgenie-backup@sda1
-journalctl -u 'backupgenie-backup@*' -n 50
+sudo systemctl start holma-backup@sda1
+journalctl -u 'holma-backup@*' -n 50
 ```
 
 Replace `sda1` with a dedicated test partition. The trigger mounts the selected
@@ -825,15 +853,15 @@ docker compose ps
 docker compose logs --tail=100 backend
 
 # Verify tools included in the backend image
-docker exec backupgenie-backend rclone version
-docker exec backupgenie-backend smbclient --version
+docker exec holma-backend rclone version
+docker exec holma-backend smbclient --version
 ```
 
 ---
 
 ## 🌍 Internationalization (i18n)
 
-BackupGenie ships with full multi-language support:
+Holma ships with full multi-language support:
 
 ### Supported languages
 - 🇬🇧 **English** — fully translated
@@ -1054,7 +1082,7 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 
 # Check systemd logs
-journalctl -u backupgenie-backup@sd* -n 50 -f
+journalctl -u holma-backup@sd* -n 50 -f
 
 # Debug USB devices
 lsblk
@@ -1071,7 +1099,7 @@ sudo udevadm info --name=/dev/sda1 --attribute-walk
 smbclient -L //192.168.1.100 -U backup_user
 
 # Test from inside Docker
-docker exec backupgenie-backend smbclient -L //192.168.1.100 -U backup_user
+docker exec holma-backend smbclient -L //192.168.1.100 -U backup_user
 
 # Then use Sources → connection test in the Web UI
 ```
@@ -1121,10 +1149,10 @@ sudo DRY_RUN=true ./scripts/backup-cleanup.sh
 
 ```bash
 # Generate an ED25519 key pair (locally)
-ssh-keygen -t ed25519 -o -a 100 -f ~/.ssh/backupgenie
+ssh-keygen -t ed25519 -o -a 100 -f ~/.ssh/holma
 
 # Copy the public key to the Raspberry Pi
-ssh-copy-id -i ~/.ssh/backupgenie.pub pi@raspberrypi.local
+ssh-copy-id -i ~/.ssh/holma.pub pi@raspberrypi.local
 
 # Configure the SSH server
 sudo nano /etc/ssh/sshd_config
@@ -1185,7 +1213,7 @@ the database; keep the same `SECRET_KEY` when moving or restoring an installatio
 ### Project structure
 
 ```
-BackupGenie/
+Holma/
 ├── backend/
 │   ├── app/
 │   │   ├── __init__.py
@@ -1249,7 +1277,7 @@ npm run dev
 
 ```bash
 # Backend tests with warnings treated as errors
-docker run --rm --entrypoint python backupgenie/backend:latest \
+docker run --rm --entrypoint python holma/backend:latest \
   -W error -m unittest discover -s tests -p 'test_*.py'
 
 # Frontend checks
@@ -1334,16 +1362,16 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 **Need help? Have questions?**
 
-[![GitHub Issues](https://img.shields.io/github/issues/hehljo/BackupGenie?style=for-the-badge)](https://github.com/hehljo/BackupGenie/issues)
-[![GitHub Discussions](https://img.shields.io/github/discussions/hehljo/BackupGenie?style=for-the-badge)](https://github.com/hehljo/BackupGenie/discussions)
+[![GitHub Issues](https://img.shields.io/github/issues/hehljo/Holma?style=for-the-badge)](https://github.com/hehljo/Holma/issues)
+[![GitHub Discussions](https://img.shields.io/github/discussions/hehljo/Holma?style=for-the-badge)](https://github.com/hehljo/Holma/discussions)
 
-[Report Bug](https://github.com/hehljo/BackupGenie/issues/new?template=bug_report.md) • [Request Feature](https://github.com/hehljo/BackupGenie/issues/new?template=feature_request.md) • [Ask a Question](https://github.com/hehljo/BackupGenie/discussions)
+[Report Bug](https://github.com/hehljo/Holma/issues/new?template=bug_report.md) • [Request Feature](https://github.com/hehljo/Holma/issues/new?template=feature_request.md) • [Ask a Question](https://github.com/hehljo/Holma/discussions)
 
 ---
 
 ### ☕ Support this project
 
-If BackupGenie helps you manage your backups, consider supporting development!
+If Holma helps you manage your backups, consider supporting development!
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support%20Development-yellow?style=for-the-badge&logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/pommesbude)
 
@@ -1361,10 +1389,10 @@ Your support keeps this project alive and growing! 🙏
 
 <div align="center">
 
-**Made with ❤️ by the BackupGenie community**
+**Made with ❤️ by the Holma community**
 
-⭐ **Star this repo if BackupGenie helps you!** ⭐
+⭐ **Star this repo if Holma helps you!** ⭐
 
-[🏠 Home](https://github.com/hehljo/BackupGenie) • [📖 Docs](docs/) • [🐛 Issues](https://github.com/hehljo/BackupGenie/issues) • [💬 Discussions](https://github.com/hehljo/BackupGenie/discussions)
+[🏠 Home](https://github.com/hehljo/Holma) • [📖 Docs](docs/) • [🐛 Issues](https://github.com/hehljo/Holma/issues) • [💬 Discussions](https://github.com/hehljo/Holma/discussions)
 
 </div>

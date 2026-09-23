@@ -1,5 +1,5 @@
 #!/bin/bash
-# BackupGenie - Container Entrypoint
+# Holma - Container Entrypoint
 # Runs hardware detection and starts the application
 
 set -e
@@ -21,7 +21,7 @@ if [ "${HARDWARE_RAM_MB:-0}" -gt 0 ] && [ "${HARDWARE_RAM_MB:-0}" -le 1024 ]; th
 fi
 
 echo ""
-echo "Starting BackupGenie backend..."
+echo "Starting Holma backend..."
 
 # Backups run only in this dedicated process. API workers merely enqueue jobs,
 # so gunicorn worker restarts cannot lose an active job or break stop requests.

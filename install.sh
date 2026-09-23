@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ============================================================================
-# BackupGenie - Universal Cross-Platform Installer
+# Holma - Universal Cross-Platform Installer
 # Supports: macOS, Windows (WSL2/Git Bash), Linux (Debian/Ubuntu/Raspberry Pi)
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/hehljo/BackupGenie/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/hehljo/Holma/main/install.sh | bash
 #   or: ./install.sh
 #   or: ./install.sh --webui    (launches browser-based setup wizard)
 # ============================================================================
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 # --- Configuration ---
-REPO_URL="${REPO_URL:-https://github.com/hehljo/BackupGenie.git}"
+REPO_URL="${REPO_URL:-https://github.com/hehljo/Holma.git}"
 BRANCH="${BRANCH:-main}"
 DEFAULT_PORT="${SETUP_PORT:-8888}"
 
@@ -241,13 +241,13 @@ install_deps_macos() {
 
 # --- Clone Repository ---
 clone_or_update_repo() {
-    log_step "Setting Up BackupGenie"
+    log_step "Setting Up Holma"
 
     local install_dir="$1"
 
     # If we're already in the repo directory
     if [[ -f "docker-compose.yml" && -d "backend" && -d "frontend" ]]; then
-        log_info "Already in BackupGenie directory: $(pwd)"
+        log_info "Already in Holma directory: $(pwd)"
         install_dir="$(pwd)"
         echo "$install_dir"
         return 0
@@ -261,7 +261,7 @@ clone_or_update_repo() {
         return 0
     fi
 
-    log_info "Cloning BackupGenie..."
+    log_info "Cloning Holma..."
     if [[ "$OSTYPE" == "darwin"* ]]; then
         mkdir -p "$install_dir"
     else
@@ -276,7 +276,7 @@ clone_or_update_repo() {
 
 # --- Configuration ---
 configure_env() {
-    log_step "Configuring BackupGenie"
+    log_step "Configuring Holma"
 
     local install_dir="$1"
     cd "$install_dir"
@@ -290,7 +290,7 @@ configure_env() {
             cp .env.example .env
         else
             cat > .env << 'ENVEOF'
-# BackupGenie Configuration
+# Holma Configuration
 SECRET_KEY=CHANGE_ME
 DEBUG=false
 API_PORT=5000
@@ -338,7 +338,7 @@ ENVEOF
 
 # --- Build & Start ---
 build_and_start() {
-    log_step "Building & Starting BackupGenie"
+    log_step "Building & Starting Holma"
 
     local install_dir="$1"
     cd "$install_dir"
@@ -361,7 +361,7 @@ build_and_start() {
     done
 
     if docker compose ps 2>/dev/null | grep -q "Up"; then
-        log_info "BackupGenie is running!"
+        log_info "Holma is running!"
         echo ""
         docker compose ps
     else
@@ -384,7 +384,7 @@ launch_webui_wizard() {
 
     cat > "$wizard_dir/wizard.py" << 'PYEOF'
 #!/usr/bin/env python3
-"""BackupGenie WebUI Setup Wizard - Lightweight setup server"""
+"""Holma WebUI Setup Wizard - Lightweight setup server"""
 import http.server
 import hmac
 import json
@@ -407,7 +407,7 @@ HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BackupGenie Setup Wizard</title>
+<title>Holma Setup Wizard</title>
 <style>
 :root {
   --bg: #0f172a; --surface: #1e293b; --surface2: #334155;
@@ -538,7 +538,7 @@ h2 { font-size: 20px; margin-bottom: 8px; }
 <body>
 <div class="wizard">
   <div class="logo">
-    <h1>🧞 BackupGenie</h1>
+    <h1>📦 Holma</h1>
     <p>Universal Setup Wizard</p>
   </div>
   <div class="step-indicator" id="stepIndicator"></div>
@@ -556,7 +556,7 @@ h2 { font-size: 20px; margin-bottom: 8px; }
   <!-- Step 2: Configuration -->
   <div class="step" id="step2">
     <h2>Configuration</h2>
-    <p class="subtitle">Customize your BackupGenie installation</p>
+    <p class="subtitle">Customize your Holma installation</p>
     <div class="form-group">
       <label>Installation Directory</label>
       <input type="text" id="installDir" value="" disabled>
@@ -593,16 +593,16 @@ h2 { font-size: 20px; margin-bottom: 8px; }
     <h2>Installing...</h2>
     <p class="subtitle" id="installStatus">Preparing installation...</p>
     <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-    <div class="log-output" id="installLog">Starting BackupGenie installation...\\n</div>
+    <div class="log-output" id="installLog">Starting Holma installation...\\n</div>
   </div>
 
   <!-- Step 4: Complete -->
   <div class="step" id="step4">
     <div class="success-box">
       <div class="success-icon">🎉</div>
-      <h2>BackupGenie is Ready!</h2>
+      <h2>Holma is Ready!</h2>
       <p class="subtitle">Your backup manager is up and running</p>
-      <a class="success-url" id="appUrl" href="#" target="_blank">Open BackupGenie →</a>
+      <a class="success-url" id="appUrl" href="#" target="_blank">Open Holma →</a>
     </div>
     <div class="cred-box">
       <h3 style="margin-bottom:12px">Login Credentials</h3>
@@ -664,7 +664,7 @@ async function checkSystem() {
   });
   el.appendChild(card);
 
-  document.getElementById('installDir').value = data.default_install_dir || '/opt/BackupGenie';
+  document.getElementById('installDir').value = data.default_install_dir || '/opt/Holma';
   const allOk = checks.every(c => c.ok || c.warn);
   document.getElementById('btn1next').disabled = !allOk;
 }
@@ -704,7 +704,7 @@ async function saveConfig() {
     addLog(r2.message || 'Build complete');
 
     setProgress(70, 'Starting containers...');
-    addLog('Starting BackupGenie containers...');
+    addLog('Starting Holma containers...');
 
     const res3 = await apiFetch('/api/start', { method: 'POST' });
     const r3 = await res3.json();
@@ -870,7 +870,7 @@ class WizardHandler(http.server.BaseHTTPRequestHandler):
 
         try:
             if not os.path.isfile(os.path.join(self.install_dir, 'docker-compose.yml')):
-                raise ValueError('Fixed installation directory is not a BackupGenie checkout')
+                raise ValueError('Fixed installation directory is not a Holma checkout')
             os.makedirs(os.path.join(self.install_dir, 'config'), exist_ok=True)
             os.makedirs(os.path.join(self.install_dir, 'data'), exist_ok=True)
             os.makedirs(os.path.join(self.install_dir, 'logs'), exist_ok=True)
@@ -982,7 +982,7 @@ LOG_RETENTION_DAYS=30
 def run_wizard(port):
     server = http.server.HTTPServer(('127.0.0.1', port), WizardHandler)
     url = f'http://127.0.0.1:{port}/?token={urllib.parse.quote(SETUP_TOKEN)}'
-    print(f'\n  🧞 BackupGenie Setup Wizard running at:')
+    print(f'\n  📦 Holma Setup Wizard running at:')
     print(f'     {url}')
     print('     Localhost only; the wizard closes automatically after installation.')
     print(f'\n  Press Ctrl+C to stop\n')
@@ -1024,7 +1024,7 @@ print_summary() {
 
     echo ""
     echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════╗"
-    echo "║        BackupGenie Setup Complete! 🎉        ║"
+    echo "║        Holma Setup Complete! 🎉        ║"
     echo -e "╚══════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "  ${BOLD}Web Interface:${NC}  http://$ip:3000"
@@ -1063,9 +1063,9 @@ main() {
                 echo "  --help       Show this help"
                 echo ""
                 echo "Environment Variables:"
-                echo "  REPO_URL     Git repository URL (default: hehljo/BackupGenie)"
+                echo "  REPO_URL     Git repository URL (default: hehljo/Holma)"
                 echo "  BRANCH       Git branch (default: main)"
-                echo "  INSTALL_DIR  Installation directory (default: /opt/BackupGenie)"
+                echo "  INSTALL_DIR  Installation directory (default: /opt/Holma)"
                 echo ""
                 exit 0
                 ;;
@@ -1083,9 +1083,9 @@ main() {
     echo ""
 
     # Default install directory
-    local install_dir="${INSTALL_DIR:-/opt/BackupGenie}"
+    local install_dir="${INSTALL_DIR:-/opt/Holma}"
     if [[ "$platform" == "macos" ]]; then
-        install_dir="${INSTALL_DIR:-$HOME/BackupGenie}"
+        install_dir="${INSTALL_DIR:-$HOME/Holma}"
     fi
 
     # Install dependencies based on platform
@@ -1108,7 +1108,7 @@ main() {
         windows-git-bash)
             echo ""
             log_warn "Native Windows detected (Git Bash/MSYS2)"
-            echo "  BackupGenie requires Docker, which works best via WSL2 on Windows."
+            echo "  Holma requires Docker, which works best via WSL2 on Windows."
             echo ""
             echo "  Recommended setup:"
             echo "    1. Enable WSL2:  wsl --install"

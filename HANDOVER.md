@@ -96,7 +96,7 @@ tar.gz auf 38 %, zip nur auf 65 %, und `tar` pur bläht auf 193 % auf
 einzeln deflatete Zip-Einträge deutlich.
 
 **zstd wäre achtmal schneller bei gleicher Größe**, braucht aber ein
-Extra-Paket im Image. Falls BackupGenie auf einem Pi 3 läuft und die CPU-Zeit
+Extra-Paket im Image. Falls Holma auf einem Pi 3 läuft und die CPU-Zeit
 spürbar wird, ist das der nächste Schritt.
 
 ### Gemeinsame Logik statt Kopie
@@ -185,7 +185,7 @@ Frontend-Build grün (`npm run build`).
 
 ## Nicht geprüft / offene Punkte
 
-- **Kein Lauf gegen die Produktivinstanz.** BackupGenie läuft auf dieser
+- **Kein Lauf gegen die Produktivinstanz.** Holma läuft auf dieser
   Maschine nicht, `/mnt/backup` existiert hier nicht. Alles oben ist an einem
   Testcontainer und echten Git-Mirrors belegt, nicht am realen Datenbestand.
   → **Beim ersten Lauf nach dem Deploy ins Log schauen**, ob

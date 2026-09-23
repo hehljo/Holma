@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# BackupGenie - Systemd & Udev Installation Script
+# Holma - Systemd & Udev Installation Script
 # Supports: Raspberry Pi, Ubuntu/Debian, and other systemd-based Linux distros
 #
 # Installs:
@@ -43,21 +43,21 @@ fi
 
 log_info "Installing udev rule for USB auto-detection..."
 
-cat > /etc/udev/rules.d/99-backupgenie-backup.rules << 'EOF'
-# BackupGenie - Auto-trigger backup on USB device connection
+cat > /etc/udev/rules.d/99-holma-backup.rules << 'EOF'
+# Holma - Auto-trigger backup on USB device connection
 # Matches USB block devices (partitions) when added
 ACTION=="add", SUBSYSTEM=="block", ENV{ID_USB_DRIVER}=="usb-storage", \
     ENV{DEVTYPE}=="partition", \
-    TAG+="systemd", ENV{SYSTEMD_WANTS}="backupgenie-backup@%k.service"
+    TAG+="systemd", ENV{SYSTEMD_WANTS}="holma-backup@%k.service"
 EOF
 
 # --- Install systemd service ---
 
 log_info "Installing systemd backup trigger service..."
 
-cat > /etc/systemd/system/backupgenie-backup@.service << EOF
+cat > /etc/systemd/system/holma-backup@.service << EOF
 [Unit]
-Description=BackupGenie Auto-Backup Trigger for %i
+Description=Holma Auto-Backup Trigger for %i
 After=docker.service network-online.target
 Wants=network-online.target
 ConditionPathExists=$TRIGGER_SCRIPT
@@ -71,16 +71,16 @@ Group=root
 # Environment
 Environment=BACKUP_MOUNT=/mnt/backup
 Environment=BACKUP_API_URL=http://localhost:5000/api/v1/backup/start
-Environment=BACKUP_TOKEN_FILE=/etc/backupgenie/api_token
+Environment=BACKUP_TOKEN_FILE=/etc/holma/api_token
 
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=backupgenie-trigger
+SyslogIdentifier=holma-trigger
 
 # Security hardening
 ProtectSystem=strict
-ReadWritePaths=/mnt/backup /var/log/backupgenie /var/run
+ReadWritePaths=/mnt/backup /var/log/holma /var/run
 PrivateTmp=true
 
 # Timeout (allow long backups)
@@ -94,25 +94,25 @@ EOF
 
 log_info "Creating required directories..."
 
-mkdir -p /etc/backupgenie
-mkdir -p /var/log/backupgenie
+mkdir -p /etc/holma
+mkdir -p /var/log/holma
 mkdir -p /mnt/backup
 
 # Set permissions
-chown -R "$SERVICE_USER:$SERVICE_USER" /var/log/backupgenie
+chown -R "$SERVICE_USER:$SERVICE_USER" /var/log/holma
 chmod 755 "$TRIGGER_SCRIPT"
 
 # --- API Token Setup ---
 
-if [[ ! -f /etc/backupgenie/api_token ]]; then
-    log_warn "API token file not found at /etc/backupgenie/api_token"
+if [[ ! -f /etc/holma/api_token ]]; then
+    log_warn "API token file not found at /etc/holma/api_token"
     echo ""
     echo "  To generate a token:"
     echo "    sudo python3 $SCRIPT_DIR/create-api-token.py"
     echo "  The helper asks for the admin password and writes mode 0600."
     echo ""
 else
-    chmod 600 /etc/backupgenie/api_token
+    chmod 600 /etc/holma/api_token
     log_info "API token file found and permissions secured"
 fi
 
@@ -127,28 +127,28 @@ udevadm trigger
 # --- Enable service ---
 
 log_info "Enabling backup trigger service..."
-systemctl enable "backupgenie-backup@.service" 2>/dev/null || true
+systemctl enable "holma-backup@.service" 2>/dev/null || true
 
 # --- Summary ---
 
 echo ""
 echo "============================================"
-echo "  BackupGenie Auto-Backup Setup Complete"
+echo "  Holma Auto-Backup Setup Complete"
 echo "============================================"
 echo ""
-echo "  udev rule:    /etc/udev/rules.d/99-backupgenie-backup.rules"
-echo "  systemd unit: /etc/systemd/system/backupgenie-backup@.service"
+echo "  udev rule:    /etc/udev/rules.d/99-holma-backup.rules"
+echo "  systemd unit: /etc/systemd/system/holma-backup@.service"
 echo "  trigger:      $TRIGGER_SCRIPT"
-echo "  token file:   /etc/backupgenie/api_token"
-echo "  log dir:      /var/log/backupgenie/"
+echo "  token file:   /etc/holma/api_token"
+echo "  log dir:      /var/log/holma/"
 echo "  mount point:  /mnt/backup"
 echo ""
 echo "  To test manually:"
-echo "    sudo systemctl start backupgenie-backup@sda1"
+echo "    sudo systemctl start holma-backup@sda1"
 echo ""
 echo "  To view logs:"
-echo "    journalctl -u 'backupgenie-backup@*' -f"
-echo "    tail -f /var/log/backupgenie/trigger.log"
+echo "    journalctl -u 'holma-backup@*' -f"
+echo "    tail -f /var/log/holma/trigger.log"
 echo ""
 
 log_info "Done! Plug in a USB drive to test auto-backup."

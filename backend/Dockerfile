@@ -1,4 +1,4 @@
-# Backend Dockerfile for BackupGenie
+# Backend Dockerfile for Holma
 FROM python:3.13-slim
 
 # Install system dependencies

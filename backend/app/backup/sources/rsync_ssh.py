@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 class RsyncSSHBackup(BackupHandler):
     """Rsync over SSH backup handler"""
 
+    ARTIFACT_MODE = 'snapshot'
+
     def backup(self):
         """Execute rsync over SSH backup"""
         host = self.source_config.get('host', '')

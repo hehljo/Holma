@@ -1,6 +1,6 @@
 #!/bin/bash
 ################################################################################
-# BackupGenie - Interaktiver Setup-Wizard für Raspberry Pi
+# Holma - Interaktiver Setup-Wizard für Raspberry Pi
 # Einfache, geführte Installation mit Schritt-für-Schritt Anleitung
 ################################################################################
 
@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 BOLD='\033[1m'
 
 # Variablen
-INSTALL_DIR="/opt/BackupGenie"
+INSTALL_DIR="/opt/Holma"
 BACKUP_MOUNT="/mnt/backup"
 CURRENT_USER="${SUDO_USER:-$USER}"
 
@@ -28,7 +28,7 @@ print_header() {
     echo -e "${CYAN}${BOLD}"
     echo "╔════════════════════════════════════════════════════════════════╗"
     echo "║                                                                ║"
-    echo "║            BackupGenie - Interaktiver Setup-Wizard            ║"
+    echo "║            Holma - Interaktiver Setup-Wizard            ║"
     echo "║                  Raspberry Pi Deployment                       ║"
     echo "║                                                                ║"
     echo "╚════════════════════════════════════════════════════════════════╝"
@@ -216,11 +216,11 @@ EOF
 ################################################################################
 
 setup_repository() {
-    print_step "Schritt 3/7: BackupGenie installieren"
+    print_step "Schritt 3/7: Holma installieren"
 
-    # Check if already in BackupGenie directory
+    # Check if already in Holma directory
     if [ -f "docker-compose.yml" ] && [ -d "backend" ] && [ -d "frontend" ]; then
-        print_info "BackupGenie-Repository bereits vorhanden"
+        print_info "Holma-Repository bereits vorhanden"
         INSTALL_DIR=$(pwd)
         return
     fi
@@ -255,19 +255,19 @@ setup_repository() {
         cd "$INSTALL_DIR"
     else
         print_info "Repository wird geklont..."
-        local repo_url=$(ask_input "Git Repository URL" "https://github.com/hehljo/BackupGenie.git")
+        local repo_url=$(ask_input "Git Repository URL" "https://github.com/hehljo/Holma.git")
         git clone "$repo_url" "$INSTALL_DIR"
         cd "$INSTALL_DIR"
     fi
 
-    print_success "BackupGenie installiert in: $INSTALL_DIR"
+    print_success "Holma installiert in: $INSTALL_DIR"
 }
 
 ################################################################################
 # Konfiguration
 ################################################################################
 
-configure_backupgenie() {
+configure_holma() {
     print_step "Schritt 4/7: Konfiguration"
 
     # Create directories
@@ -384,7 +384,7 @@ build_and_start() {
 install_systemd_service() {
     print_step "Schritt 6/7: Automatisches Backup bei USB-Anschluss (Optional)"
 
-    if ! ask_yes_no "Soll BackupGenie automatisch starten wenn eine USB-Festplatte angeschlossen wird?"; then
+    if ! ask_yes_no "Soll Holma automatisch starten wenn eine USB-Festplatte angeschlossen wird?"; then
         print_info "Systemd-Service übersprungen"
         return
     fi
@@ -443,7 +443,7 @@ finalize_setup() {
     echo -e "4. Konfigurieren Sie Ihre Backup-Quellen:"
     echo -e "   ${BOLD}nano $INSTALL_DIR/config/sources.json${NC}"
     echo -e "5. Für Cloud-Storage (Google Drive, Dropbox, etc.):"
-    echo -e "   ${BOLD}docker exec -it backupgenie-backend rclone config${NC}"
+    echo -e "   ${BOLD}docker exec -it holma-backend rclone config${NC}"
 
     echo -e "\n${CYAN}${BOLD}📚 Dokumentation:${NC}"
     echo -e "Vollständige Dokumentation: $INSTALL_DIR/Readme.md"
@@ -456,7 +456,7 @@ finalize_setup() {
         echo -e "${BOLD}logout${NC}"
     fi
 
-    echo -e "\n${GREEN}Viel Erfolg mit BackupGenie! 🚀${NC}\n"
+    echo -e "\n${GREEN}Viel Erfolg mit Holma! 🚀${NC}\n"
 }
 
 ################################################################################
@@ -475,7 +475,7 @@ main() {
     clear
     print_header
 
-    echo -e "${BOLD}Dieser Wizard führt Sie durch die Installation von BackupGenie.${NC}"
+    echo -e "${BOLD}Dieser Wizard führt Sie durch die Installation von Holma.${NC}"
     echo -e "Der Prozess dauert ca. 15-25 Minuten (abhängig von Internet-Geschwindigkeit).\n"
 
     if ! ask_yes_no "Möchten Sie mit der Installation beginnen?" "y"; then
@@ -487,7 +487,7 @@ main() {
     check_system
     install_dependencies
     setup_repository
-    configure_backupgenie
+    configure_holma
     build_and_start
     install_systemd_service
     finalize_setup

@@ -11,6 +11,7 @@ from typing import Dict, Optional
 import os
 
 from .base import NotificationChannel, NotificationPriority, NotificationType
+from app.brand import BRAND_ICON_URL, BRAND_NAME, BRAND_TAGLINE
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ class EmailNotification(NotificationChannel):
         try:
             # Create message
             msg = MIMEMultipart('alternative')
-            msg['Subject'] = f"[BackupGenie] {title}"
+            msg['Subject'] = f"[{BRAND_NAME}] {title}"
             msg['From'] = self.from_email
             msg['To'] = ', '.join(self.to_emails)
 
@@ -120,7 +121,7 @@ class EmailNotification(NotificationChannel):
         <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px;">
             <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 <div style="background-color: {color}; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-                    <h1 style="margin: 0; font-size: 24px;">🧞 BackupGenie</h1>
+                    <h1 style="margin: 0; font-size: 24px;">{BRAND_NAME}</h1>
                 </div>
                 <div style="padding: 30px;">
                     <h2 style="color: {color}; margin-top: 0;">{title}</h2>
@@ -129,7 +130,7 @@ class EmailNotification(NotificationChannel):
                     </div>
                 </div>
                 <div style="background-color: #f8f9fa; padding: 15px; border-radius: 0 0 8px 8px; text-align: center; color: #6c757d; font-size: 12px;">
-                    <p style="margin: 0;">BackupGenie - Automated Backup Manager</p>
+                    <p style="margin: 0;">{BRAND_NAME} - {BRAND_TAGLINE}</p>
                 </div>
             </div>
         </body>
@@ -209,8 +210,8 @@ class WebhookNotification(NotificationChannel):
                 "color": color,
                 "timestamp": utc_iso_z(),
                 "footer": {
-                    "text": "BackupGenie",
-                    "icon_url": "https://raw.githubusercontent.com/hehljo/BackupGenie/main/assets/icon.png"
+                    "text": BRAND_NAME,
+                    "icon_url": BRAND_ICON_URL
                 }
             }]
         }
@@ -230,7 +231,7 @@ class WebhookNotification(NotificationChannel):
                 "color": color,
                 "title": title,
                 "text": message,
-                "footer": "BackupGenie",
+                "footer": BRAND_NAME,
                 "ts": int(__import__('time').time())
             }]
         }
@@ -239,7 +240,7 @@ class WebhookNotification(NotificationChannel):
         """Format Mattermost webhook payload"""
         return {
             "text": f"### {title}\n\n{message}",
-            "username": "BackupGenie"
+            "username": BRAND_NAME
         }
 
     def _format_generic(self, title: str, message: str, notification_type: NotificationType, data: Optional[Dict]) -> Dict:

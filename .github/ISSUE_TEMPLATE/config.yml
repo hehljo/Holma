@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Questions & Discussions
-    url: https://github.com/hehljo/BackupGenie/discussions
+    url: https://github.com/hehljo/Holma/discussions
     about: Ask questions, share setups, discuss ideas
   - name: Security Vulnerability
-    url: https://github.com/hehljo/BackupGenie/security/advisories/new
+    url: https://github.com/hehljo/Holma/security/advisories/new
     about: Report security issues privately (do not open a public issue)

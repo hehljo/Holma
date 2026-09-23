@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 class WebDAVBackup(BackupHandler):
     """WebDAV backup handler using rclone or davfs2"""
 
+    ARTIFACT_MODE = 'snapshot'
+
     def backup(self):
         """Execute WebDAV backup"""
         host = self.source_config.get('host', '')

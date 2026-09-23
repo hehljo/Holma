@@ -1,11 +1,11 @@
 #!/bin/bash
-# BackupGenie - Raspberry Pi Setup Script
+# Holma - Raspberry Pi Setup Script
 # Automated setup for Raspberry Pi
 
 set -e
 
 echo "============================================"
-echo "BackupGenie - Raspberry Pi Setup"
+echo "Holma - Raspberry Pi Setup"
 echo "============================================"
 echo ""
 
@@ -61,10 +61,10 @@ sudo chown $USER:$USER /mnt/backup
 
 # Clone repository (if not already in it)
 if [ ! -f "docker-compose.yml" ]; then
-    echo "Cloning BackupGenie repository..."
+    echo "Cloning Holma repository..."
     read -p "Enter repository URL: " REPO_URL
-    git clone "$REPO_URL" BackupGenie
-    cd BackupGenie
+    git clone "$REPO_URL" Holma
+    cd Holma
 fi
 
 # Create necessary directories
@@ -102,7 +102,7 @@ echo "1. Edit configuration files:"
 echo "   nano .env"
 echo "   nano config/sources.json"
 echo ""
-echo "2. Start BackupGenie:"
+echo "2. Start Holma:"
 echo "   docker compose up -d"
 echo ""
 echo "3. Check logs:"

@@ -8,6 +8,7 @@ from datetime import datetime
 import os
 
 from .base import NotificationChannel, NotificationPriority, NotificationType
+from app.brand import BRAND_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -236,8 +237,8 @@ class NotificationManager:
             return False
 
         return channel.send_with_retry(
-            title="🧪 BackupGenie Test Notification",
-            message="This is a test notification from BackupGenie. If you receive this, your notification channel is configured correctly!",
+            title=f"🧪 {BRAND_NAME} Test Notification",
+            message=f"This is a test notification from {BRAND_NAME}. If you receive this, your notification channel is configured correctly!",
             priority=NotificationPriority.NORMAL,
             notification_type=NotificationType.SYSTEM_WARNING
         )

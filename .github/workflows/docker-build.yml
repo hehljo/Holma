@@ -9,7 +9,30 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq rsync
+          pip install -q -r backend/requirements.txt
+          npm ci --prefix frontend
+
+      - name: Run all gates
+        run: scripts/run-gates.sh
+
   build-backend:
+    needs: gates
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -33,11 +56,12 @@ jobs:
           file: backend/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/backupgenie-backend:latest
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/holma-backend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   build-frontend:
+    needs: gates
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -61,6 +85,6 @@ jobs:
           file: frontend/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/backupgenie-frontend:latest
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/holma-frontend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

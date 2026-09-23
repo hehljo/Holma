@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 class SMBBackup(BackupHandler):
     """Handles SMB through smbclient and NFS through mount/rsync."""
 
+    def artifact_mode(self):
+        # NFS syncs a file tree incrementally; SMB streams one full tar per
+        # run, which is already a single artifact and too large to gzip again.
+        return 'snapshot' if self.source_config.get('type') == 'nfs' else 'folder'
+
     def __init__(self, source_config, dest_path):
         super().__init__(source_config, dest_path)
         self.mount_point = None

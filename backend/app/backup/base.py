@@ -63,6 +63,11 @@ def normalize_backup_result(result):
 class BackupHandler(ABC):
     """Abstract base class for backup handlers"""
 
+    # How the executor turns one run's output into a versioned artifact.
+    # See app/backup/artifacts.py. Small sources stay 'archive'; handlers
+    # for large file trees or already packed dumps override this.
+    ARTIFACT_MODE = 'archive'
+
     def __init__(self, source_config, dest_path):
         """
         Initialize backup handler
@@ -81,8 +86,15 @@ class BackupHandler(ABC):
         else:
             self.source_config = source_config
         self.dest_path = dest_path
+        # Source directory that survives between runs. The executor points
+        # dest_path at a per-run staging or sync directory below it.
+        self.work_path = dest_path
         self.logs = []
         self._live_log_callback = None  # set by executor for live streaming
+
+    def artifact_mode(self):
+        """Artifact mode for this source; may depend on the source config."""
+        return self.ARTIFACT_MODE
 
     @abstractmethod
     def backup(self):

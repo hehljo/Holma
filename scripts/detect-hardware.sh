@@ -1,5 +1,5 @@
 #!/bin/bash
-# BackupGenie - Hardware Detection Script
+# Holma - Hardware Detection Script
 # Detects architecture, platform, RAM and USB capabilities
 # Runs at container start, outputs environment variables
 
@@ -108,7 +108,7 @@ main() {
     export RECOMMENDED_PARALLEL_TASKS
 
     # Print detection results for logging
-    echo "=== BackupGenie Hardware Detection ==="
+    echo "=== Holma Hardware Detection ==="
     echo "  Architecture:     $HARDWARE_ARCH"
     echo "  Platform:         $HARDWARE_PLATFORM"
     echo "  RAM:              ${HARDWARE_RAM_MB} MB"

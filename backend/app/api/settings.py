@@ -16,6 +16,7 @@ from app import db, limiter
 from app.api.auth import admin_required
 from app.config import Config
 from app.models.backup import Setting
+from app.backup.artifacts import DEFAULT_BACKUP_RETENTION_COUNT
 from app.runtime_settings import (
     backup_root_path,
     get_setting,
@@ -31,7 +32,9 @@ CONFIGURABLE_SETTINGS = {
     'backup_base_path': {'type': 'string', 'default': '/mnt/backup'},
     'max_parallel_tasks': {'type': 'int', 'default': 2, 'min': 1, 'max': 10},
     'log_retention_days': {'type': 'int', 'default': 30, 'min': 1},
-    'backup_retention_count': {'type': 'int', 'default': 10, 'min': 1, 'max': 1000},
+    'backup_retention_count': {
+        'type': 'int', 'default': DEFAULT_BACKUP_RETENTION_COUNT, 'min': 1, 'max': 1000,
+    },
     'auto_cleanup': {'type': 'bool', 'default': True},
 }
 
@@ -253,7 +256,7 @@ def get_settings(current_user):
         'backup_base_path': backup_path,
         'max_parallel_tasks': int(get_setting('max_parallel_tasks', 2)),
         'log_retention_days': int(get_setting('log_retention_days', 30)),
-        'backup_retention_count': int(get_setting('backup_retention_count', 10)),
+        'backup_retention_count': int(get_setting('backup_retention_count', DEFAULT_BACKUP_RETENTION_COUNT)),
         'api_auth_enabled': True,
         'https_only': os.getenv('FORCE_HTTPS', 'false').lower() == 'true',
         'auto_cleanup': str(get_setting('auto_cleanup', 'true')).lower() == 'true',

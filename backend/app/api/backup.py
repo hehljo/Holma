@@ -243,7 +243,7 @@ def list_downloadable(current_user, source_id):
             })
 
     # Generic directories (supabase dumps etc.)
-    from app.backup.executor import WORKING_DIR_NAMES
+    from app.backup.artifacts import WORKING_DIR_NAMES
     for d in sorted(glob.glob(os.path.join(backup_dir, '*')), reverse=True):
         if os.path.basename(d) in WORKING_DIR_NAMES:
             continue
@@ -334,7 +334,7 @@ def get_available_restores(current_user, source_id):
     available = []
 
     # Find tar.gz archives
-    for archive in sorted(glob.glob(os.path.join(backup_dir, 'supabase_*.tar.gz')), reverse=True):
+    for archive in sorted(glob.glob(os.path.join(backup_dir, '*.tar.gz')), reverse=True):
         name = os.path.basename(archive)
         stat = os.stat(archive)
         available.append({

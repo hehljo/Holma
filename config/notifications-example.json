@@ -8,7 +8,7 @@
       "smtp_port": 587,
       "smtp_user": "your-email@gmail.com",
       "smtp_password": "your-app-password",
-      "from_email": "backupgenie@yourdomain.com",
+      "from_email": "holma@yourdomain.com",
       "to_emails": ["admin@yourdomain.com"],
       "use_tls": true,
       "retry_count": 3,
@@ -44,7 +44,7 @@
       "name": "ntfy-push",
       "enabled": false,
       "server_url": "https://ntfy.sh",
-      "topic": "backupgenie-YOUR-RANDOM-TOPIC",
+      "topic": "holma-YOUR-RANDOM-TOPIC",
       "username": "",
       "password": "",
       "retry_count": 2

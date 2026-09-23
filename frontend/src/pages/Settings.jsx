@@ -8,6 +8,7 @@ import { FormSkeleton } from '../components/Skeleton'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ScheduleFields from '../components/ScheduleFields'
 import { DEFAULT_SCHEDULE } from '../components/schedule'
+import { BRAND } from '../brand'
 
 // Providers whose credentials can be verified against a live API
 const TESTABLE_PROVIDERS = ['github', 'telegram']
@@ -24,7 +25,7 @@ export default function Settings() {
     backupBasePath: '/mnt/backup',
     maxParallelTasks: 2,
     logRetention: 30,
-    backupRetentionCount: 10,
+    backupRetentionCount: '',
     apiAuth: true,
     httpsOnly: false,
     autoCleanup: true,
@@ -386,7 +387,7 @@ export default function Settings() {
 
       // Generate filename with timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0]
-      link.setAttribute('download', `backupgenie_config_${timestamp}.json`)
+      link.setAttribute('download', `${BRAND.slug}_config_${timestamp}.json`)
 
       document.body.appendChild(link)
       link.click()

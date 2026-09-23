@@ -11,13 +11,13 @@ Only the latest minor release receives security updates.
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in BackupGenie, please report it privately so it can be fixed before public disclosure.
+If you discover a security vulnerability in Holma, please report it privately so it can be fixed before public disclosure.
 
 **Do not open a public GitHub issue for security bugs.**
 
 Report via:
 
-- GitHub Security Advisories: <https://github.com/hehljo/BackupGenie/security/advisories/new>
+- GitHub Security Advisories: <https://github.com/hehljo/Holma/security/advisories/new>
 - Email: hehljo@gmail.com
 
 Please include:
@@ -54,7 +54,7 @@ Out of scope:
 
 ## Security Best Practices
 
-When deploying BackupGenie:
+When deploying Holma:
 
 1. **Always set a strong `SECRET_KEY`** (generate it with the documented command and keep it unchanged)
 2. **Change the default admin password** immediately after first login

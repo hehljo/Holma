@@ -1,8 +1,8 @@
-# BackupGenie - Portainer Stack mit pre-built Images (kein Build nötig)
+# Holma - Portainer Stack mit pre-built Images (kein Build nötig)
 # Nutzt fertige Images von GitHub Container Registry
 #
 # Verzeichnisstruktur auf der NAS:
-# /volume1/docker/backupgenie/
+# /volume1/docker/holma/
 # ├── config/sources.json
 # ├── data/
 # ├── logs/
@@ -10,8 +10,8 @@
 
 services:
   backend:
-    image: ghcr.io/hehljo/backupgenie-backend:latest
-    container_name: backupgenie-backend
+    image: ghcr.io/hehljo/holma-backend:latest
+    container_name: holma-backend
     restart: unless-stopped
     ports:
       - "${API_PORT:-5050}:5000"
@@ -43,13 +43,13 @@ services:
       # All credentials (tokens, passwords, API keys) are managed
       # via the Web UI: Settings → Credentials (encrypted in DB)
     volumes:
-      - ${CONFIG_PATH:-/volume1/docker/backupgenie/config}:/app/config
-      - ${DATA_PATH:-/volume1/docker/backupgenie/data}:/data
-      - ${BACKUP_BASE_PATH:-/volume1/docker/backupgenie/backup}:/mnt/backup
-      - ${LOGS_PATH:-/volume1/docker/backupgenie/logs}:/var/log/backupgenie
+      - ${CONFIG_PATH:-/volume1/docker/holma/config}:/app/config
+      - ${DATA_PATH:-/volume1/docker/holma/data}:/data
+      - ${BACKUP_BASE_PATH:-/volume1/docker/holma/backup}:/mnt/backup
+      - ${LOGS_PATH:-/volume1/docker/holma/logs}:/var/log/backupgenie
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
-      - backupgenie
+      - holma
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
@@ -58,8 +58,8 @@ services:
       start_period: 40s
 
   frontend:
-    image: ghcr.io/hehljo/backupgenie-frontend:latest
-    container_name: backupgenie-frontend
+    image: ghcr.io/hehljo/holma-frontend:latest
+    container_name: holma-frontend
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-3080}:3000"
@@ -69,7 +69,7 @@ services:
       backend:
         condition: service_healthy
     networks:
-      - backupgenie
+      - holma
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
       interval: 30s
@@ -78,5 +78,5 @@ services:
       start_period: 20s
 
 networks:
-  backupgenie:
+  holma:
     driver: bridge

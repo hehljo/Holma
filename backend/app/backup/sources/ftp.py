@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 class FTPBackup(BackupHandler):
     """FTP/FTPS backup handler using lftp"""
 
+    ARTIFACT_MODE = 'snapshot'
+
     def backup(self):
         """Execute FTP backup using lftp mirror"""
         host = self.source_config.get('host', 'localhost')
@@ -112,6 +114,8 @@ class FTPBackup(BackupHandler):
 
 class SFTPBackup(BackupHandler):
     """SFTP backup handler using rsync over SSH"""
+
+    ARTIFACT_MODE = 'snapshot'
 
     def backup(self):
         """Execute SFTP backup using rsync"""

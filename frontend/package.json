@@ -1,6 +1,6 @@
 {
-  "name": "backupgenie-frontend",
-  "version": "1.0.0",
+  "name": "holma-frontend",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

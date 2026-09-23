@@ -1,4 +1,4 @@
-# BackupGenie - Master Roadmap
+# Holma - Master Roadmap
 
 ## Done
 - [x] Fix: rclone-Backups verwenden nicht-löschendes `copy` statt zielbereinigendem `sync`
@@ -32,7 +32,7 @@
 - [x] Fix: Sprachwahl in Sidebar sichtbar gemacht und Settings-/Storage-/Config-Texte vollständig über i18n geführt
 - [x] Fix: Backup-Aufbewahrung pro Quelle als UI-Setting ergänzt, Auto-Cleanup erklärt und Version auf 1.6.1 erhöht
 - [x] Dark Mode für komplettes Frontend mit Systemerkennung, Toggle und globalen Kontrast-Overrides umgesetzt
-- [x] Projekt-spezifische `AGENTS.md` mit BackupGenie-Arbeitsregeln erstellt
+- [x] Projekt-spezifische `AGENTS.md` mit Holma-Arbeitsregeln erstellt
 - [x] Fix: Security-/Runtime-Bugs aus Tiefenanalyse behoben (Admin-Bootstrap, Supabase Full, Restore-Pfade, Config-Export, Source-Verträge, Notifications-Auth)
 - [x] Global Credentials System (encrypted in DB)
 - [x] Log Viewer im Frontend (System Logs Seite)
@@ -68,3 +68,4 @@
 - [ ] **Multi-Repo GitHub:** Alle Repos eines Users/Org auf einmal sichern (discovery_mode: all)
 - [ ] **Storage Dashboard:** Speicherplatz-Übersicht pro Source mit Trends
 - [ ] **Restore für weitere Source-Typen:** Docker, MySQL etc.
+- [ ] **DiskStation-Direktanbindung (aus Henga/Lugga übernehmen):** NAS-Quellen direkt über die Synology-API anbinden statt nur per SMB — Anmeldung inkl. 2FA/OTP, Geräte-Token, Freigaben per `SYNO.API.Info` ermitteln. Die bestehende Integration aus Henga und Lugga als Vorlage nehmen, nicht neu erfinden.

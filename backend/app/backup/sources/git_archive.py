@@ -26,7 +26,7 @@ class GitMirrorArchiveMixin:
 
     def _mirror_root(self):
         """Directory holding the incremental mirrors. Created on demand."""
-        path = os.path.join(self.dest_path, MIRROR_DIRNAME)
+        path = os.path.join(self.work_path, MIRROR_DIRNAME)
         os.makedirs(path, exist_ok=True)
         return path
 
@@ -36,7 +36,7 @@ class GitMirrorArchiveMixin:
         Earlier versions cloned straight into dest_path. Without this the next
         run would clone every repository again from scratch.
         """
-        legacy_path = os.path.join(self.dest_path, f"{repo_dir}.git")
+        legacy_path = os.path.join(self.work_path, f"{repo_dir}.git")
         if os.path.exists(new_path) or not os.path.isdir(legacy_path):
             return
         try:

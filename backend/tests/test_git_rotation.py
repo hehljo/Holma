@@ -37,53 +37,9 @@ def check(name, condition, detail=''):
         print(f"  FAIL {name}  {detail}")
 
 
-# --- the retention rule, isolated from Flask ------------------------------
-# The executor cannot be imported without a Flask app context, so the rule it
-# applies is re-read from source here rather than reimplemented: this test
-# calls the real regex and the real exclusion set.
-
-def load_retention_rule():
-    """Extract the live matching rule from executor.py source.
-
-    Reading the source keeps this test honest: if someone changes the pattern
-    or drops the working-dir exclusion, this picks it up instead of testing a
-    private copy of the logic.
-    """
-    src_path = os.path.join(BACKEND, 'app', 'backup', 'executor.py')
-    with open(src_path, encoding='utf-8') as fh:
-        src = fh.read()
-
-    working_dirs = re.search(r'WORKING_DIR_NAMES\s*=\s*\{([^}]*)\}', src)
-    pattern = re.search(r"re\.search\(r'\(([^']+)\)',\s*name\)", src)
-    skips_dotfiles = "name.startswith('.')" in src
-    skips_working = 'name in WORKING_DIR_NAMES' in src
-    return {
-        'working_dirs_declared': working_dirs is not None,
-        'pattern': pattern.group(1) if pattern else None,
-        'skips_dotfiles': skips_dotfiles,
-        'skips_working': skips_working,
-        'source': src,
-    }
-
-
-def select_deleted(names, keep_count, rule, mirror_dirname):
-    """Apply the executor's selection rule to a list of entry names."""
-    versioned = {}
-    for name in names:
-        if name.endswith('_restore_tmp'):
-            continue
-        if rule['skips_working'] and name == mirror_dirname:
-            continue
-        if rule['skips_dotfiles'] and name.startswith('.'):
-            continue
-        m = re.search(rule['pattern'], name)
-        if not m:
-            continue
-        versioned.setdefault(m.group(0), []).append(name)
-    if len(versioned) <= keep_count:
-        return []
-    stamps = sorted(versioned.keys(), reverse=True)
-    return [n for s in stamps[keep_count:] for n in versioned[s]]
+# --- the retention rule --------------------------------------------------
+# select_expired() is the function the executor calls. It lives in a module
+# without Flask, so the gate calls it instead of re-reading a regex from source.
 
 
 def main():
@@ -104,10 +60,13 @@ def main():
         shared_src = fh.read()
     shared_code = strip(shared_src)
 
-    rule = load_retention_rule()
-    if rule['pattern'] is None:
-        print("ABBRUCH: retention pattern not found in executor.py — nothing measured")
+    try:
+        from app.backup.artifacts import WORKING_DIR_NAMES, select_expired
+    except ImportError as e:
+        print(f"ABBRUCH: app.backup.artifacts not importable ({e}) — nothing measured")
         return 2
+    with open(os.path.join(BACKEND, 'app', 'backup', 'executor.py'), encoding='utf-8') as fh:
+        exec_src = fh.read()
 
     # Read the constant from source rather than importing it: the handlers pull
     # in the Flask app via BackupHandler, which is not available to a bare test
@@ -160,12 +119,11 @@ def main():
 
     # --- 2. mirrors are outside the versioned area ------------------------
     print("\n2. Mirrors are working state, not versions")
-    check("retention excludes the working dir", rule['skips_working'])
-    check("retention excludes partial files", rule['skips_dotfiles'])
-    check("executor imports the name, not a second copy",
-          'from app.backup.sources.git_archive import' in rule['source']
-          and re.search(r"MIRROR_DIRNAME\s*=\s*'", rule['source']) is None,
-          "the excluded name must not be typed twice")
+    check("mirror dir is a declared working dir", MIRROR_DIRNAME in WORKING_DIR_NAMES)
+    check("executor uses the shared rule, not a second copy",
+          'select_expired(' in exec_src
+          and re.search(r"(MIRROR_DIRNAME|WORKING_DIR_NAMES)\s*=", exec_src) is None,
+          "the retention rule and excluded names must not be typed twice")
 
     # --- 3. the rule deletes the right things -----------------------------
     print("\n3. Retention selects correctly (both directions)")
@@ -173,7 +131,7 @@ def main():
         f'acme_repo_2026083{d}_120000.tar.gz' for d in range(1, 6)
     ]
 
-    deleted = select_deleted(names, keep_count=3, rule=rule, mirror_dirname=MIRROR_DIRNAME)
+    deleted = select_expired(names, 3)
     check("deletes the surplus (5 versions, keep 3 -> 2 deleted)",
           len(deleted) == 2, f"deleted={deleted}")
     check("keeps the newest",
@@ -186,14 +144,14 @@ def main():
     # green direction: under the limit nothing may go
     few = [MIRROR_DIRNAME] + [f'acme_repo_2026083{d}_120000.tar.gz' for d in (1, 2)]
     check("keeps everything when under the limit",
-          select_deleted(few, 3, rule, MIRROR_DIRNAME) == [],
+          select_expired(few, 3) == [],
           "healthy case must stay green")
 
     # a repo whose own name contains a timestamp must not fool the exclusion
     tricky = [MIRROR_DIRNAME] + [
         f'log_20240101_000000_repo_2026083{d}_120000.tar.gz' for d in range(1, 6)
     ]
-    deleted_tricky = select_deleted(tricky, 3, rule, MIRROR_DIRNAME)
+    deleted_tricky = select_expired(tricky, 3)
     check("mirror dir survives even with timestamped repo names",
           MIRROR_DIRNAME not in deleted_tricky, f"deleted={deleted_tricky}")
 
@@ -202,7 +160,6 @@ def main():
     # apply to that run exactly as it does to a full one - otherwise the
     # button quietly grows the disk.
     print("\n3b. Retention applies to single-source runs")
-    exec_src = rule['source']
 
     def enclosing_def(src, needle):
         """Name of the method a call sits in, by def position."""
@@ -301,8 +258,9 @@ def main():
             tar.add(mirror, arcname='acme_repo.git')
 
         check("archive is a single file per project", os.path.isfile(archive))
-        check("archive name matches the retention pattern",
-              re.search(rule['pattern'], os.path.basename(archive)) is not None)
+        check("archive name is picked up by retention",
+              select_expired([os.path.basename(archive), 'acme_repo_20990101_000000.tar.gz'], 1)
+              == [os.path.basename(archive)])
 
         # the point of the whole thing: it must restore
         extract_dir = os.path.join(tmp, 'extract')

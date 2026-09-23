@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 class LocalBackup(BackupHandler):
     """Handles local directory backups using rsync"""
 
+    ARTIFACT_MODE = 'snapshot'
+
     def backup(self):
         """Execute local backup"""
         sources = self._as_list(self.source_config.get('sources'))

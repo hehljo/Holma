@@ -1,4 +1,4 @@
-# Frontend Dockerfile for BackupGenie
+# Frontend Dockerfile for Holma
 FROM node:22-alpine AS build
 
 WORKDIR /app

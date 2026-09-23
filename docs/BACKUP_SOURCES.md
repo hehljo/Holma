@@ -1,4 +1,4 @@
-# BackupGenie – supported backup sources
+# Holma – supported backup sources
 
 This document describes the **35 source types exposed by the standard Docker image and web form**. Existing advanced source definitions remain loadable, but they are not advertised as standard support unless the required tools and privileges are supplied separately.
 
@@ -34,9 +34,9 @@ Source-specific fields are normally saved below `config` by the web form. The ba
   "enabled": true,
   "config": {
     "host": "diskstation",
-    "share": "backupgenie-test",
+    "share": "holma-test",
     "path": "optional/subfolder",
-    "username": "backupgenie",
+    "username": "holma",
     "password": "store through the encrypted settings/UI",
     "options": {
       "encrypt_transport": false,
@@ -46,7 +46,7 @@ Source-specific fields are normally saved below `config` by the web form. The ba
 }
 ```
 
-The connection test performs authenticated listing only. A backup reads the share and writes a TAR archive into BackupGenie's backup destination; it does not modify the SMB share. Transport signing is enabled by default. Set `encrypt_transport` when the server supports mandatory SMB encryption.
+The connection test performs authenticated listing only. A backup reads the share and writes a TAR archive into Holma's backup destination; it does not modify the SMB share. Transport signing is enabled by default. Set `encrypt_transport` when the server supports mandatory SMB encryption.
 
 ### Rsync over SSH
 
@@ -59,9 +59,9 @@ The connection test performs authenticated listing only. A backup reads the shar
   "config": {
     "host": "diskstation",
     "port": 22,
-    "path": "/volume1/backupgenie-test",
-    "username": "backupgenie",
-    "ssh_key_path": "/run/secrets/backupgenie_ssh_key",
+    "path": "/volume1/holma-test",
+    "username": "holma",
+    "ssh_key_path": "/run/secrets/holma_ssh_key",
     "options": {
       "delete": false,
       "strict_host_key_checking": true
@@ -169,7 +169,7 @@ Supabase is currently the only source with an integrated restore workflow. A res
 
 The backend retains compatibility mappings for types such as `nfs`, `mongodb`, `influxdb` and additional generic self-hosted services. They are intentionally hidden from the standard form because their tools, privileges, configuration contract or restore guarantees are not part of the standard image.
 
-For NFS, mount the export read-only on the Docker host and expose that mounted folder to BackupGenie as a `local` source. Direct NFS mounting inside the container requires a custom privileged deployment and is not the recommended standard setup.
+For NFS, mount the export read-only on the Docker host and expose that mounted folder to Holma as a `local` source. Direct NFS mounting inside the container requires a custom privileged deployment and is not the recommended standard setup.
 
 ## Restore status
 

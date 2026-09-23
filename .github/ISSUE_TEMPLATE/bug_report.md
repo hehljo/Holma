@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a problem with BackupGenie
+about: Report a problem with Holma
 title: "[Bug] "
 labels: bug
 assignees: ''
@@ -26,7 +26,7 @@ What actually happened.
 
 ## Environment
 
-- BackupGenie version: (e.g. 1.5.0)
+- Holma version: (e.g. 1.5.0)
 - Deployment: [ ] Synology / Portainer  [ ] Raspberry Pi  [ ] Linux server  [ ] Generic Docker
 - Backup source type affected (if applicable): (e.g. Supabase, GitHub, NAS)
 - Browser (if frontend issue): (e.g. Firefox 124, Safari iOS)

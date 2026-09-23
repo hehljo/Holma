@@ -11,6 +11,7 @@ import GitHubRepoSelector from './GitHubRepoSelector'
 import ScheduleFields from './ScheduleFields'
 import { DEFAULT_SCHEDULE, describeSchedule } from './schedule'
 import PropTypes from 'prop-types'
+import { BRAND } from '../brand'
 
 // Only source types supported by the standard container and this form.
 const SOURCE_TYPES = [
@@ -720,7 +721,7 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
                   <>
                     <p className="mb-2">{t('sourceForm.configureRclone')}</p>
                     <code className="block bg-blue-100 p-2 rounded text-xs mb-2">
-                      docker exec -it backupgenie-backend rclone config
+                      docker exec -it {BRAND.slug}-backend rclone config
                     </code>
                     <p className="text-xs">
                       {t('sourceForm.rcloneAuthHint', {
