@@ -1,6 +1,7 @@
 # Holma - Master Roadmap
 
 ## Done
+- [x] UI: Neues Holma-Vektorlogo in Holma-Blau (#0284c7) implementiert, abgeleitete PWA-/Favicon-/App-Icons generiert und Dark Mode adaptiert
 - [x] Fix: rclone-Backups verwenden nicht-löschendes `copy` statt zielbereinigendem `sync`
 - [x] Security: Passwortgebundene Automation-Tokens mit 365-Tage-Limit und Widerruf bei Passwortänderung ergänzt
 - [x] Fix: Mehrprozess-Start über Dateisperre serialisiert und SQLite-Race mit 4-Prozess-Regressionstest abgesichert

@@ -80,3 +80,8 @@ Lokale Arbeitsanweisungen für `/root/Holma`. Globale Regeln aus `/root/.codex/A
 - Einträge knapp und konkret schreiben, z. B. `- [x] Fix: Docker-Handler liest Werte aus config-Sub-Objekt`.
 - Roadmap nicht als Changelog aufblasen; nur umgesetzte oder bewusst geplante Projektpunkte eintragen.
 
+
+## Agent-Modus & Orchestrierung
+- Empfohlener Modus: Subagent-Orchester
+- Kriterien: Frontend/Backend getrennt, 87 Quelldateien, Test-Suite vorhanden (87 Quelldateien)
+- Workflow: Vor größeren Aufgaben kurz beim User rückversichern, ob Single Agent oder Subagents (Scout/Planner/Worker/Reviewer) eingesetzt werden.

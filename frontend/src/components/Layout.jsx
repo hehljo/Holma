@@ -4,8 +4,8 @@ import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
 import LanguageSwitcher from './LanguageSwitcher'
+import { BrandLogo } from './BrandLogo'
 import PropTypes from 'prop-types'
-import { BRAND } from '../brand'
 
 const navigation = [
   { name: 'dashboard', href: '/', icon: Home },
@@ -44,10 +44,10 @@ export default function Layout({ children, onLogout, isDarkMode, onToggleDarkMod
       {/* Logo */}
       <div className="px-5 py-5 border-b border-gray-200 dark:border-gray-800">
         <div className="flex items-center gap-3">
-          <img src={BRAND.logoMark} alt="" className="h-10 w-9 object-contain shrink-0" />
+          <BrandLogo className="h-10 w-9 object-contain shrink-0 text-primary-600 dark:text-primary-400" />
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-bold text-gray-900">{t('app.name')}</h1>
-            <p className="truncate text-xs text-gray-500">{t('app.shortDescription')}</p>
+            <h1 className="truncate text-xl font-bold text-gray-900 dark:text-white">{t('app.name')}</h1>
+            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{t('app.shortDescription')}</p>
           </div>
         </div>
         <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-2">
@@ -108,8 +108,8 @@ export default function Layout({ children, onLogout, isDarkMode, onToggleDarkMod
       <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-b border-gray-200 dark:border-gray-800">
         <div className="flex min-h-16 items-center justify-between px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">
-            <img src={BRAND.logoMark} alt="" className="h-9 w-8 object-contain shrink-0" />
-            <h1 className="truncate text-lg font-bold text-gray-900">{t('app.name')}</h1>
+            <BrandLogo className="h-9 w-8 object-contain shrink-0 text-primary-600 dark:text-primary-400" />
+            <h1 className="truncate text-lg font-bold text-gray-900 dark:text-white">{t('app.name')}</h1>
           </div>
           <div className="flex items-center gap-1">
             <button

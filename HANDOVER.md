@@ -59,11 +59,7 @@ danach genau ein Artefakt daraus. Modus je Handler (`ARTIFACT_MODE` /
 
 ## Offene Punkte
 
-1. **Logo** (macht der Nutzer): neues Bild als `frontend/public/logo-mark.png`
-   ablegen; Favicon/PWA-Icons (`favicon.png`, `apple-touch-icon.png`,
-   `pwa-*.png`, `icon.png`) und `icon/*.png` zeigen noch den Geist bzw. den
-   alten Namen. Ggf. Generator für die abgeleiteten Größen bauen
-   (Skill `game-asset-generator`).
+1. **Logo (erledigt):** Neues Vektor-Logo aus `icon/logo.svg` in Holma-Blau (`#0284c7`) eingebunden, `BrandLogo`-Komponente mit Dark-Mode-Unterstützung (`dark:text-primary-400`) in Layout und Login integriert, und alle abgeleiteten Bilddateien (`logo-mark.png`, `icon.png`, `pwa-*.png`, `apple-touch-icon.png`, `favicon.png`, `logo.svg`) über `scripts/generate_brand_assets.py` erzeugt.
 2. **SMB-NAS = volle Kopie pro Version** (smbclient-Tar). Sparsam ginge nur
    mit Mount + Snapshot-Modus — eigener Umbau, mit Nutzer klären.
 3. **Erster echter Lauf nach Neuaufsetzen:** je Quelle genau ein neues
