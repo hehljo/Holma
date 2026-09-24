@@ -139,6 +139,9 @@ open http://localhost:3000
 
 ## 🚀 Installation
 
+> [!WARNING]
+> **Deploying a repository stack through Portainer? Select `docker-compose.portainer.yml` explicitly.** Portainer may prefill `docker-compose.yml`; replace it before deploying. The regular file builds images locally and uses different default ports and volume paths. The Portainer file pulls the prebuilt GHCR images and provides the Portainer-specific defaults.
+
 > [!TIP]
 > Holma detects your hardware automatically and adjusts resources (workers, RAM limits, parallel tasks) on its own.
 
@@ -173,6 +176,9 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 | **Repository URL** | `https://github.com/hehljo/Holma` |
 | **Repository reference** | `refs/heads/main` |
 | **Compose path** | `docker-compose.portainer.yml` |
+
+> [!CAUTION]
+> Before deploying, verify the Compose path is exactly `docker-compose.portainer.yml`—not Portainer's prefilled `docker-compose.yml`. The latter triggers a local image build and uses different port and volume defaults.
 
 > **Private repo?** → enable **Authentication** → username: your GitHub user → password: Personal Access Token (classic, scope: `repo`)
 
@@ -374,6 +380,9 @@ docker compose up -d
 ```
 
 #### Portainer (without Synology)
+
+> [!CAUTION]
+> Set the Compose path to `docker-compose.portainer.yml`. Do not leave Portainer's `docker-compose.yml` default selected; it builds locally and has different port and volume defaults.
 
 In Portainer → Stacks → Add Stack → Repository:
 1. Repository URL: `https://github.com/hehljo/Holma`
