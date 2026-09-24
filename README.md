@@ -6,12 +6,8 @@
 
 ### Automated Multi-Source Backup Manager
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/Docker-20.10%2B-blue.svg)](https://www.docker.com/)
-[![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-20.19%2B-green.svg)](https://nodejs.org/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow.svg?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/pommesbude)
+[![Docker build](https://github.com/hehljo/Holma/actions/workflows/docker-build.yml/badge.svg?branch=main)](https://github.com/hehljo/Holma/actions/workflows/docker-build.yml)
+[![License](https://img.shields.io/github/license/hehljo/Holma)](LICENSE)
 
 **[Features](#-features)** • **[Quick Start](#-quick-start)** • **[Documentation](docs/)** • **[API Docs](#-api-documentation)** • **[Contributing](CONTRIBUTING.md)**
 
@@ -35,167 +31,24 @@ It does not ask twice, and it does not bring back half the fridge. Passt scho.
 
 ---
 
-## 🧪 Test Status
-
-> `✅ Live` bezeichnet einen echten Zielsystemtest. `✅ Auto` bezeichnet grüne Unit-/Fehlerpfad-/Image-Tests; der reale Zielsystemtest ist dort noch offen. `🔲` ist noch nicht belastbar geprüft.
->
-> Historische Live-Ergebnisse wurden noch nicht gegen den aktuellen Remediation-Build wiederholt. Aktuelle Details stehen in `docs/SECURITY_AUDIT_LOCAL.md`.
->
-> Lokaler Gesamtgate (23.09.2026): `scripts/run-gates.sh` — 8 Backend-Gates, Marken-/Versions-Gate, Frontend-Lint und Produktionsbuild grün. Läuft in CI vor jedem Image-Build.
-
-| Source | Backup | Restore | Notes |
-|--------|--------|---------|-------|
-| **GitHub** (mirror clone, auto-discovery) | ✅ Live (Altstand) | — | im vollständigen Backend-Gate geprüft |
-| **Supabase** (DB + Storage + Auth Config) | ✅ Live (Altstand) | ✅ Auto | Restore-Fehlerpfade aktuell geprüft |
-| NAS (SMB) | ✅ Auto | — | Dienst live erreichbar, Anmeldung erzwungen; Testfreigabe-E2E offen |
-| rsync over SSH | ✅ Auto | — | Command-/Secret-Gate; Live offen |
-| GitLab | ✅ Auto | — | gemeinsames Git-Mirror-/Archiv-Gate |
-| Bitbucket | ✅ Auto | — | gemeinsames Git-Mirror-/Archiv-Gate |
-| Gitea / Forgejo / Codeberg | ✅ Auto | — | sauberer Remote/Auth-Vertrag geprüft |
-| MySQL / MariaDB | ✅ Auto | — | Credential-Datei und Image-Client geprüft |
-| PostgreSQL | ✅ Auto | ✅ Auto (Supabase) | CLI, Fehlerpfade und Restore-Sicherheit geprüft |
-| Redis | ✅ Auto | — | Remote-RDB und Secret-Übergabe geprüft |
-| SQLite | ✅ Auto | — | Live-Backup-API plus Integritätscheck geprüft |
-| CouchDB | ✅ Auto | — | read-only HTTP-Handler geprüft; Live offen |
-| Google Drive (rclone) | ✅ Auto | — | nicht-löschendes `rclone copy` + Image-CLI; Live offen |
-| Dropbox (rclone) | ✅ Auto | — | nicht-löschendes `rclone copy` + Image-CLI; Live offen |
-| OneDrive (rclone) | ✅ Auto | — | nicht-löschendes `rclone copy` + Image-CLI; Live offen |
-| S3 / Backblaze B2 (rclone) | ✅ Auto | — | Secret-/Command-/Image-Gate; Live offen |
-| Portainer stack export | ✅ Auto | — | Status-API live auf Port 9000; authentifizierter Export offen |
-| Docker Volumes / Images | ✅ Auto | — | Fehler-/Restart-/Image-CLI-Gates; Live offen |
-| Home Assistant | 🔲 | — | read-only API-Export |
-| Local filesystem | ✅ Auto | — | rsync-Fehlerpfad geprüft; Live offen |
-
-| Host-/Transport-Gate | Status | Notes |
-|----------------------|--------|-------|
-| Tailscale → `diskstation` | ✅ Live | direkte Verbindung, 17 ms |
-| DSM HTTPS (`5001`) | ✅ Live | HTTP 200 |
-| Portainer Status (`9000`) | ✅ Live | API erreichbar; `9443` auf dieser NAS geschlossen |
-| DiskStation Docker-Engine | 🔲 | SSH-Port geschlossen; read-only API-Zugang noch nötig |
-
-If you've tested a source, please [share your setup](https://github.com/hehljo/Holma/discussions) — it helps others a lot.
-
----
-
-## 🛠️ Recent Fixes
-
-- **Safe Cloud Copies:** rclone sources now use non-deleting `copy`; source-side removals no longer delete files from the backup destination.
-- **Reliable Container Startup:** database/bootstrap initialization is serialized across Gunicorn workers and the backup worker.
-- **Automation Tokens:** USB/systemd jobs can use password-bound tokens that expire after at most 365 days and are revoked by password changes.
-- **Adaptive UI:** The web UI now has consistent touch targets, visible focus states, responsive page shells, mobile-friendly drawers, bottom-sheet modals, and safer wrapping for backup/source lists.
-- **One Archive per Run:** Every backup run becomes exactly one timestamped version per source, and the newest **3** are kept by default (configurable). Small sources (GitHub, GitLab, Gitea, databases, Supabase, Docker, self-hosted apps) become one `.tar.gz` per run with one archive per repository inside. Large file sources (NFS, rsync, rclone, FTP/SFTP, WebDAV, local folders) become snapshot folders where unchanged files are hard links, so three versions of a 100 GB share cost 100 GB plus the changes. NAS via SMB and Proxmox dumps are already one full archive per run and are stored as-is in a timestamped folder (no second compression) — with SMB, each version is a full copy. Failed runs never replace a good version.
-- **Source Handler Compatibility:** Non-GitHub/Supabase handlers now accept UI-created list fields, direct credentials, and path fallbacks more robustly across local, database, Docker, FTP/SFTP, WebDAV, rclone, rsync, self-hosted, and Proxmox sources.
-- **i18n Cleanup:** The language selector is always visible and common Settings/Storage/Config dialogs now use localized English/German strings.
-- **Dark Mode:** The web UI now follows the system theme on first load, keeps manual theme changes, and includes dark-safe colors for forms, cards, modals, badges, logs, and notifications.
-- **Supabase Full Backup:** Fixed full-mode backups with Storage/Auth config by resolving the service role key from the selected credential profile.
-- **Restore Safety:** Restore paths are now restricted to the configured backup directory and archive extraction is protected against path traversal.
-- **GitHub Backups:** Mirror clones no longer store access tokens in remote URLs; failed Git commands are reported as failures instead of successful backups.
-- **Configuration Export:** Secret-like values are redacted recursively before exporting configuration files.
-- **Source Forms:** UI-created sources now normalize paths, lists, repositories, Docker volumes/images, and NAS/SMB shares for the backend handlers.
-- **Notifications:** Notification endpoints require authentication and the UI uses the real configured channels instead of placeholder data.
-
----
-
-## ✨ Features
-
-<table>
-<tr>
-<td width="50%">
-
-### 🔄 35 Standard Source Types
-- **Network Storage**: NAS (SMB), rsync over SSH, WebDAV
-- **Git Platforms**: GitHub (auto-discovery), GitLab, Bitbucket, Gitea
-- **BaaS/PaaS**: Supabase (DB + Storage + Config)
-- **Databases**: MySQL/MariaDB, PostgreSQL, Redis, SQLite, CouchDB
-- **Cloud Storage**: Google Drive, Dropbox, OneDrive, S3
-- **API Exports**: Home Assistant, Grafana, Node-RED, Portainer, Syncthing
-- **Docker**: volumes and images
-- **Local**: filesystems, home directories
-
-📚 [Full source list →](docs/BACKUP_SOURCES.md)
-
-</td>
-<td width="50%">
-
-### 🎯 Smart Automation
-- ⚡ **USB trigger**: auto-start when a drive is plugged in (Pi)
-- 🔍 **Auto-discovery**: detect GitHub repos automatically
-- 🌐 **Modern Web UI**: React-based SPA
-- 🔐 **Secure**: SSH key auth, SSL/TLS, RBAC
-- 📊 **Real-time monitoring**: live dashboard & logs
-- 🐳 **Docker-based**: one-command deployment
-- 🖥️ **Universal**: Raspberry Pi, Synology, Linux, Docker
-- 🌍 **Multi-language**: 🇬🇧 English & 🇩🇪 German
-
-</td>
-</tr>
-</table>
-
----
-
-### 🗂️ How backups are stored
-
-```
-/mnt/backup/<source-id>/
-  <source-id>_20260923_020000.tar.gz   <- small sources: one archive per run
-  <source-id>_20260924_020000.tar.gz      (GitHub: one repo archive per repository inside)
-  _mirrors/                            <- Git working copies, only new commits are fetched
-
-/mnt/backup/<nas-source>/
-  <nas-source>_20260923_020000/        <- large sources: snapshot folder per run,
-  <nas-source>_20260924_020000/           unchanged files are hard links
-  _current/                            <- incremental sync target
-```
-
-Retention keeps the newest *N* versions per source (Settings → Storage, default 3). Working folders (`_mirrors`, `_current`) are never rotated.
-
-## 🚀 Quick Start
-
-> [!NOTE]
-> Requires Docker 20.10+ and 2 GB+ RAM. Runs on Raspberry Pi, Synology NAS, Linux servers, or any Docker host.
-
-### One-line install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/hehljo/Holma/main/install.sh | bash
-```
-
-### Manual setup
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/hehljo/Holma.git
-cd Holma
-
-# 2. Set SECRET_KEY (mandatory)
-export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
-
-# 3. Start the services
-SECRET_KEY=$SECRET_KEY docker compose up -d
-
-# 4. Get the admin password from logs
-docker compose logs backend | grep "INIT"
-
-# 5. Open the Web UI → configure credentials and sources
-open http://localhost:3000
-```
-
-**Login**: `admin` / password from the container logs (step 4). All credentials (tokens, passwords) are managed via the Web UI.
-
----
-
 ## 📋 Table of Contents
 
 <details open>
 <summary>Click to expand</summary>
 
 - [Requirements](#-requirements)
+- [Quick Start](#-quick-start)
 - [Installation](#-installation)
   - [Synology NAS / Portainer](#-synology-nas--portainer)
   - [Linux Server / VPS](#-linux-server--vps)
   - [Raspberry Pi](#-raspberry-pi)
   - [Docker (generic)](#-docker-generic)
   - [Initial Configuration](#initial-configuration)
+  - [Data Persistence](#-data-persistence-docker-volumes)
+- [Features](#-features)
+- [How backups are stored](#-how-backups-are-stored)
+- [Test Status](#-test-status)
+- [Recent Fixes](#-recent-fixes)
 - [Configuration](#️-configuration)
   - [Backup Sources](#backup-sources)
   - [USB Auto-Trigger](#usb-auto-trigger)
@@ -203,7 +56,7 @@ open http://localhost:3000
 - [Usage](#-usage)
   - [Web Interface](#web-interface)
   - [API Usage](#api-usage)
-  - [CLI Commands](#cli-commands)
+  - [Useful container commands](#useful-container-commands)
 - [Internationalization (i18n)](#-internationalization-i18n)
 - [API Documentation](#-api-documentation)
 - [Troubleshooting](#-troubleshooting)
@@ -242,6 +95,48 @@ Compose: 2.0+
 
 ---
 
+## 🚀 Quick Start
+
+> [!NOTE]
+> Requires Docker 20.10+ and 2 GB+ RAM. Runs on Raspberry Pi, Synology NAS, Linux servers, or any Docker host.
+
+### One-line install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hehljo/Holma/main/install.sh | bash
+```
+
+The installer creates a persistent `.env` file and generates the required `SECRET_KEY` for you.
+
+### Manual setup
+
+> [!IMPORTANT]
+> **Every installation requires a `SECRET_KEY` of at least 32 characters.** Keep it persistent and unchanged across restarts, updates and restores. It secures authentication and encrypts stored credentials.
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/hehljo/Holma.git
+cd Holma
+
+# 2. Create a persistent environment file
+cp config/example.env .env
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+nano .env  # Set SECRET_KEY to the generated value
+
+# 3. Start the services
+docker compose up -d
+
+# 4. Get the admin password from logs
+docker compose logs backend | grep "INIT"
+
+# 5. Open the Web UI → configure credentials and sources
+open http://localhost:3000
+```
+
+**Login**: `admin` / password from the container logs (step 4). All credentials (tokens, passwords) are managed via the Web UI.
+
+---
+
 ## 🚀 Installation
 
 > [!TIP]
@@ -258,7 +153,10 @@ Compose: 2.0+
 sudo mkdir -p /volume1/docker/holma/{config,data,logs,backup}
 ```
 
-#### 2. Generate a SECRET_KEY
+#### 2. Generate the required SECRET_KEY
+
+> [!IMPORTANT]
+> Every Holma installation requires this key. Store it securely and keep it unchanged across updates and restores; without it the backend will not start, and changing it makes stored credentials unreadable.
 
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -287,7 +185,9 @@ API_PORT=5050
 FRONTEND_PORT=3080
 ```
 
-> No `.env` file required! Just these four variables. All credentials (GitHub token, Supabase etc.) are managed through the Web UI.
+> **Important:** `SECRET_KEY` is mandatory. Portainer does not automatically load a `.env` file from the repository, so add this key as a stack environment variable in Portainer. `PLATFORM_PROFILE`, `API_PORT` and `FRONTEND_PORT` are optional; Compose defaults apply when they are omitted.
+>
+> The `.env` file itself is not needed for this Portainer setup, but the `SECRET_KEY` normally stored in it is. Store the key securely and keep it unchanged across updates and restores; otherwise, saved credentials can no longer be decrypted. Add other credentials (GitHub, Supabase, etc.) later in the Web UI.
 
 → **Deploy the stack**
 
@@ -347,6 +247,9 @@ cp config/sources-example.json config/sources.json
 
 #### 3. Configure
 
+> [!IMPORTANT]
+> `SECRET_KEY` is required for this installation. Put the generated value in `.env` and keep it unchanged across updates and restores.
+
 ```bash
 # Generate a value, then paste it unchanged into .env
 python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
@@ -403,6 +306,9 @@ cp config/sources-example.json config/sources.json
 
 #### 3. Configure
 
+> [!IMPORTANT]
+> `SECRET_KEY` is required for this installation. Put the generated value in `.env` and keep it unchanged across updates and restores.
+
 ```bash
 # Generate a value, then paste it unchanged into .env
 python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
@@ -448,6 +354,9 @@ Detailed guide: [USB Auto-Trigger →](#usb-auto-trigger)
 <details>
 <summary>For any platform with Docker</summary>
 
+> [!IMPORTANT]
+> `SECRET_KEY` is mandatory for this installation as well. Generic Docker Compose deployments normally provide it in `.env`. Keep the same value for the lifetime of the installation; changing it makes stored credentials unreadable.
+
 ```bash
 git clone https://github.com/hehljo/Holma.git
 cd Holma
@@ -469,8 +378,11 @@ docker compose up -d
 In Portainer → Stacks → Add Stack → Repository:
 1. Repository URL: `https://github.com/hehljo/Holma`
 2. Compose path: `docker-compose.portainer.yml` (uses prebuilt GHCR images, no build needed)
-3. Set environment variables (at minimum `SECRET_KEY`)
-4. Deploy
+3. Under **Environment variables**, set a persistent, randomly generated `SECRET_KEY` (at least 32 characters). Portainer does not automatically load the repository's `.env` file.
+4. Optionally set `API_PORT`, `FRONTEND_PORT` or other supported overrides; otherwise Compose defaults apply.
+5. Deploy
+
+The `.env` file itself is optional for this Portainer method; `SECRET_KEY` is not. Keep the same key across redeployments and restores.
 
 #### Environment variables for resource tuning
 
@@ -566,6 +478,120 @@ Since v1.1 you can also export/import all settings directly from the web interfa
 1. **Settings** → **Configuration Export/Import**
 2. **Export** → downloads a JSON file with all sources & settings
 3. **Import** → select a JSON file and restore your configuration
+
+---
+
+## ✨ Features
+
+<table>
+<tr>
+<td width="50%">
+
+### 🔄 35 Standard Source Types
+- **Network Storage**: NAS (SMB), rsync over SSH, WebDAV
+- **Git Platforms**: GitHub (auto-discovery), GitLab, Bitbucket, Gitea
+- **BaaS/PaaS**: Supabase (DB + Storage + Config)
+- **Databases**: MySQL/MariaDB, PostgreSQL, Redis, SQLite, CouchDB
+- **Cloud Storage**: Google Drive, Dropbox, OneDrive, S3
+- **API Exports**: Home Assistant, Grafana, Node-RED, Portainer, Syncthing
+- **Docker**: volumes and images
+- **Local**: filesystems, home directories
+
+📚 [Full source list →](docs/BACKUP_SOURCES.md)
+
+</td>
+<td width="50%">
+
+### 🎯 Smart Automation
+- ⚡ **USB trigger**: auto-start when a drive is plugged in (Pi)
+- 🔍 **Auto-discovery**: detect GitHub repos automatically
+- 🌐 **Modern Web UI**: React-based SPA
+- 🔐 **Secure**: SSH key auth, SSL/TLS, RBAC
+- 📊 **Real-time monitoring**: live dashboard & logs
+- 🐳 **Docker-based**: one-command deployment
+- 🖥️ **Universal**: Raspberry Pi, Synology, Linux, Docker
+- 🌍 **Multi-language**: 🇬🇧 English & 🇩🇪 German
+
+</td>
+</tr>
+</table>
+
+---
+
+### 🗂️ How backups are stored
+
+```
+/mnt/backup/<source-id>/
+  <source-id>_20260923_020000.tar.gz   <- small sources: one archive per run
+  <source-id>_20260924_020000.tar.gz      (GitHub: one repo archive per repository inside)
+  _mirrors/                            <- Git working copies, only new commits are fetched
+
+/mnt/backup/<nas-source>/
+  <nas-source>_20260923_020000/        <- large sources: snapshot folder per run,
+  <nas-source>_20260924_020000/           unchanged files are hard links
+  _current/                            <- incremental sync target
+```
+
+Retention keeps the newest *N* versions per source (Settings → Storage, default 3). Working folders (`_mirrors`, `_current`) are never rotated.
+
+## 🧪 Test Status
+
+> `✅ Live` bezeichnet einen echten Zielsystemtest. `✅ Auto` bezeichnet grüne Unit-/Fehlerpfad-/Image-Tests; der reale Zielsystemtest ist dort noch offen. `🔲` ist noch nicht belastbar geprüft.
+>
+> Historische Live-Ergebnisse wurden noch nicht gegen den aktuellen Remediation-Build wiederholt. Aktuelle Details stehen in `docs/SECURITY_AUDIT_LOCAL.md`.
+>
+> Lokaler Gesamtgate (23.09.2026): `scripts/run-gates.sh` — 8 Backend-Gates, Marken-/Versions-Gate, Frontend-Lint und Produktionsbuild grün. Läuft in CI vor jedem Image-Build.
+
+| Source | Backup | Restore | Notes |
+|--------|--------|---------|-------|
+| **GitHub** (mirror clone, auto-discovery) | ✅ Live (Altstand) | — | im vollständigen Backend-Gate geprüft |
+| **Supabase** (DB + Storage + Auth Config) | ✅ Live (Altstand) | ✅ Auto | Restore-Fehlerpfade aktuell geprüft |
+| NAS (SMB) | ✅ Auto | — | Dienst live erreichbar, Anmeldung erzwungen; Testfreigabe-E2E offen |
+| rsync over SSH | ✅ Auto | — | Command-/Secret-Gate; Live offen |
+| GitLab | ✅ Auto | — | gemeinsames Git-Mirror-/Archiv-Gate |
+| Bitbucket | ✅ Auto | — | gemeinsames Git-Mirror-/Archiv-Gate |
+| Gitea / Forgejo / Codeberg | ✅ Auto | — | sauberer Remote/Auth-Vertrag geprüft |
+| MySQL / MariaDB | ✅ Auto | — | Credential-Datei und Image-Client geprüft |
+| PostgreSQL | ✅ Auto | ✅ Auto (Supabase) | CLI, Fehlerpfade und Restore-Sicherheit geprüft |
+| Redis | ✅ Auto | — | Remote-RDB und Secret-Übergabe geprüft |
+| SQLite | ✅ Auto | — | Live-Backup-API plus Integritätscheck geprüft |
+| CouchDB | ✅ Auto | — | read-only HTTP-Handler geprüft; Live offen |
+| Google Drive (rclone) | ✅ Auto | — | nicht-löschendes `rclone copy` + Image-CLI; Live offen |
+| Dropbox (rclone) | ✅ Auto | — | nicht-löschendes `rclone copy` + Image-CLI; Live offen |
+| OneDrive (rclone) | ✅ Auto | — | nicht-löschendes `rclone copy` + Image-CLI; Live offen |
+| S3 / Backblaze B2 (rclone) | ✅ Auto | — | Secret-/Command-/Image-Gate; Live offen |
+| Portainer stack export | ✅ Auto | — | Status-API live auf Port 9000; authentifizierter Export offen |
+| Docker Volumes / Images | ✅ Auto | — | Fehler-/Restart-/Image-CLI-Gates; Live offen |
+| Home Assistant | 🔲 | — | read-only API-Export |
+| Local filesystem | ✅ Auto | — | rsync-Fehlerpfad geprüft; Live offen |
+
+| Host-/Transport-Gate | Status | Notes |
+|----------------------|--------|-------|
+| Tailscale → `diskstation` | ✅ Live | direkte Verbindung, 17 ms |
+| DSM HTTPS (`5001`) | ✅ Live | HTTP 200 |
+| Portainer Status (`9000`) | ✅ Live | API erreichbar; `9443` auf dieser NAS geschlossen |
+| DiskStation Docker-Engine | 🔲 | SSH-Port geschlossen; read-only API-Zugang noch nötig |
+
+If you've tested a source, please [share your setup](https://github.com/hehljo/Holma/discussions) — it helps others a lot.
+
+---
+
+## 🛠️ Recent Fixes
+
+- **Safe Cloud Copies:** rclone sources now use non-deleting `copy`; source-side removals no longer delete files from the backup destination.
+- **Reliable Container Startup:** database/bootstrap initialization is serialized across Gunicorn workers and the backup worker.
+- **Automation Tokens:** USB/systemd jobs can use password-bound tokens that expire after at most 365 days and are revoked by password changes.
+- **Adaptive UI:** The web UI now has consistent touch targets, visible focus states, responsive page shells, mobile-friendly drawers, bottom-sheet modals, and safer wrapping for backup/source lists.
+- **One Archive per Run:** Every backup run becomes exactly one timestamped version per source, and the newest **3** are kept by default (configurable). Small sources (GitHub, GitLab, Gitea, databases, Supabase, Docker, self-hosted apps) become one `.tar.gz` per run with one archive per repository inside. Large file sources (NFS, rsync, rclone, FTP/SFTP, WebDAV, local folders) become snapshot folders where unchanged files are hard links, so three versions of a 100 GB share cost 100 GB plus the changes. NAS via SMB and Proxmox dumps are already one full archive per run and are stored as-is in a timestamped folder (no second compression) — with SMB, each version is a full copy. Failed runs never replace a good version.
+- **Source Handler Compatibility:** Non-GitHub/Supabase handlers now accept UI-created list fields, direct credentials, and path fallbacks more robustly across local, database, Docker, FTP/SFTP, WebDAV, rclone, rsync, self-hosted, and Proxmox sources.
+- **i18n Cleanup:** The language selector is always visible and common Settings/Storage/Config dialogs now use localized English/German strings.
+- **Dark Mode:** The web UI now follows the system theme on first load, keeps manual theme changes, and includes dark-safe colors for forms, cards, modals, badges, logs, and notifications.
+- **Supabase Full Backup:** Fixed full-mode backups with Storage/Auth config by resolving the service role key from the selected credential profile.
+- **Restore Safety:** Restore paths are now restricted to the configured backup directory and archive extraction is protected against path traversal.
+- **GitHub Backups:** Mirror clones no longer store access tokens in remote URLs; failed Git commands are reported as failures instead of successful backups.
+- **Configuration Export:** Secret-like values are redacted recursively before exporting configuration files.
+- **Source Forms:** UI-created sources now normalize paths, lists, repositories, Docker volumes/images, and NAS/SMB shares for the backend handlers.
+- **Notifications:** Notification endpoints require authentication and the UI uses the real configured channels instead of placeholder data.
 
 ---
 
@@ -1056,6 +1082,8 @@ Authorization: Bearer TOKEN
 
 <details>
 <summary>🚫 Docker containers won't start</summary>
+
+If Portainer reports that `holma-backend` is unhealthy, first check that the stack has a non-empty `SECRET_KEY` environment variable. The backend refuses to start without it, and Portainer does not automatically load `.env` from the Git repository. Keep the same key after the first successful deployment.
 
 ```bash
 # Check the logs
