@@ -93,7 +93,7 @@ class FirstRunTests(unittest.TestCase):
             self.assertEqual(User.query.count(), 1)
 
     def test_setup_validation_and_offline_password_reset_revokes_token(self):
-        self.assertEqual(self.client.post('/api/v1/auth/setup', json=self.owner_data('owner', 'weak')).status_code, 400)
+        self.assertEqual(self.client.post('/api/v1/auth/setup', json=self.owner_data('owner', '')).status_code, 400)
         self.assertEqual(self.client.post('/api/v1/auth/setup', json=self.owner_data('!invalid')).status_code, 400)
         self.assertEqual(self.client.post('/api/v1/auth/setup', json=self.owner_data()).status_code, 201)
         login = self.client.post('/api/v1/auth/login', json={
@@ -113,6 +113,31 @@ class FirstRunTests(unittest.TestCase):
         }).status_code, 200)
         with self.app.app_context():
             self.assertEqual(User.query.count(), 1)
+
+    def test_unicode_and_short_passwords_across_setup_login_change_and_reset(self):
+        payload = self.owner_data(password='ß🦉')
+        payload['confirm_password'] = 'ß🦊'
+        self.assertEqual(self.client.post('/api/v1/auth/setup', json=payload).status_code, 400)
+        payload['confirm_password'] = 'ß🦉'
+        self.assertEqual(self.client.post('/api/v1/auth/setup', json=payload).status_code, 201)
+        login = self.client.post('/api/v1/auth/login', json={
+            'username': 'owner', 'password': 'ß🦉',
+        })
+        self.assertEqual(login.status_code, 200)
+        changed = self.client.put('/api/v1/auth/password', json={
+            'current_password': 'ß🦉', 'new_password': '🦊',
+        }, headers={'Authorization': f"Bearer {login.json['access_token']}"})
+        self.assertEqual(changed.status_code, 200)
+        self.assertEqual(self.client.post('/api/v1/auth/login', json={
+            'username': 'owner', 'password': '🦊',
+        }).status_code, 200)
+        self.command('reset-password', 'owner', passwords=('ß', 'ß'))
+        self.assertEqual(self.client.post('/api/v1/auth/login', json={
+            'username': 'owner', 'password': 'ß',
+        }).status_code, 200)
+        self.assertEqual(self.client.post('/api/v1/auth/login', json={
+            'username': 'owner', 'password': '\ud800',
+        }).status_code, 401)
 
 
 if __name__ == '__main__':

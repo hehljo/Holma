@@ -132,11 +132,7 @@
     "error": "Fehler beim Speichern der Einstellungen",
     "loadError": "Einstellungen konnten nicht geladen werden",
     "password": {
-      "minLength": "Passwort muss mindestens 12 Zeichen lang sein",
-      "uppercase": "Passwort muss mindestens einen Großbuchstaben enthalten",
-      "lowercase": "Passwort muss mindestens einen Kleinbuchstaben enthalten",
-      "digit": "Passwort muss mindestens eine Zahl enthalten",
-      "special": "Passwort muss mindestens ein Sonderzeichen enthalten",
+      "hint": "Alle Zeichen erlaubt; leeres Passwort nicht möglich. Wählen Sie selbst ein ausreichend sicheres Passwort.",
       "mismatch": "Passwörter stimmen nicht überein",
       "changed": "Passwort erfolgreich geändert",
       "changeError": "Passwort konnte nicht geändert werden"
@@ -239,11 +235,11 @@
     "failed": "Anmeldung fehlgeschlagen. Bitte überprüfen Sie Ihre Anmeldedaten.",
     "statusError": "Backend nicht erreichbar. Bitte Verbindung prüfen und Seite neu laden.",
     "setupTitle": "Ersteinrichtung",
-    "setupHelp": "Wählen Sie einen Benutzernamen und ein starkes Passwort. Die Ersteinrichtung ist nur im internen Netzwerk vorgesehen.",
+    "setupHelp": "Wählen Sie einen Benutzernamen und ein Passwort. Die Ersteinrichtung ist nur im internen Netzwerk vorgesehen.",
     "confirmPassword": "Passwort wiederholen",
     "passwordMismatch": "Die Passwörter stimmen nicht überein.",
     "usernameRules": "Benutzername: 3–80 Zeichen, Buchstaben, Ziffern, Punkt, Unterstrich oder Bindestrich.",
-    "passwordRules": "Passwort: mindestens 12 Zeichen, Groß- und Kleinbuchstabe, Ziffer und Sonderzeichen.",
+    "passwordRules": "Alle Zeichen erlaubt; leeres Passwort nicht möglich. Wählen Sie selbst ein ausreichend sicheres Passwort.",
     "createOwner": "Konto erstellen",
     "setupFailed": "Ersteinrichtung fehlgeschlagen. Bitte Eingaben und Verbindung prüfen."
   },

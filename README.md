@@ -130,7 +130,7 @@ docker compose up -d
 open http://localhost:3000
 ```
 
-**First login:** choose your own username and enter a strong password twice in the Web UI. No default account or password is created. Keep the app accessible only to your trusted local network during initial setup: the first visitor can claim the owner account while the database is empty. Existing installations keep their accounts. All source credentials are managed via the Web UI.
+**First login:** choose your own username and enter the password twice in the Web UI. All Unicode characters (including `ß` and emoji) are allowed; only an empty password is rejected. There are no length or composition requirements, so choose a secure password yourself. No default account or password is created. Keep the app accessible only to your trusted local network during initial setup: the first visitor can claim the owner account while the database is empty. Existing installations keep their accounts. All source credentials are managed via the Web UI.
 
 ---
 
@@ -200,7 +200,7 @@ FRONTEND_PORT=3080
 http://diskstation-ip:3080
 ```
 
-**First-time setup:** choose your own username and enter a strong password twice in the Web UI. No default `admin` password exists. Keep the app on your trusted local network until the first account is created: whoever visits first can claim the owner account while the database is empty. Do not expose an uninitialized installation to the internet or untrusted VPN users.
+**First-time setup:** choose your own username and enter the password twice in the Web UI. All Unicode characters are accepted, but empty passwords are not; password strength is your responsibility. No default `admin` password exists. Keep the app on your trusted local network until the first account is created: whoever visits first can claim the owner account while the database is empty. Do not expose an uninitialized installation to the internet or untrusted VPN users.
 
 **Existing installations:** persisted accounts remain unchanged; the setup form is unavailable once an account exists. If the password is lost, open the backend container console and run `python -m app.account_cli list-users`, then `python -m app.account_cli reset-password YOUR_USERNAME`. The new password is entered interactively and previous login/automation tokens are revoked. No email server or internet access is required. Do not delete the data volume to reset an account.
 

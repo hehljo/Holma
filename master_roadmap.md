@@ -1,6 +1,7 @@
 # Holma - Master Roadmap
 
 ## Done
+- [x] Fix: Unicode-Passwörter (inkl. ß/Emoji) beim Erst-Setup sicher vergleichen; frei wählbare nichtleere Passwörter in API, UI und Container-Reset mit Regressionstests abgleichen
 - [x] CI: Frontend-Multiarch-Build führt Node auf der nativen Builder-Architektur aus statt ARM64-`npm ci` unter QEMU
 - [x] UI: Lokalen Setup-Code für reine LAN-Ersteinrichtung entfernt; Benutzername und Passwortbestätigung im Browser, Offline-Reset weiterhin über Backend-Konsole
 - [x] Security/UI: Offline-Ersteinrichtung mit frei wählbarem Konto, Container-Passwort-Reset, README und SVG-Logo-Anzeige korrigiert

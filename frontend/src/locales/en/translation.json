@@ -132,11 +132,7 @@
     "error": "Error saving settings",
     "loadError": "Failed to load settings",
     "password": {
-      "minLength": "Password must be at least 12 characters long",
-      "uppercase": "Password must contain at least one uppercase letter",
-      "lowercase": "Password must contain at least one lowercase letter",
-      "digit": "Password must contain at least one digit",
-      "special": "Password must contain at least one special character",
+      "hint": "All characters are allowed; an empty password is not. Choose a password that is secure enough for your setup.",
       "mismatch": "Passwords do not match",
       "changed": "Password changed successfully",
       "changeError": "Failed to change password"
@@ -239,11 +235,11 @@
     "failed": "Login failed. Please check your credentials.",
     "statusError": "Backend unavailable. Check the connection and reload the page.",
     "setupTitle": "First-time setup",
-    "setupHelp": "Choose a username and a strong password. First-time setup is intended for a private local network only.",
+    "setupHelp": "Choose a username and a password. First-time setup is intended for a private local network only.",
     "confirmPassword": "Repeat password",
     "passwordMismatch": "Passwords do not match.",
     "usernameRules": "Username: 3–80 characters, letters, digits, periods, underscores or hyphens.",
-    "passwordRules": "Password: at least 12 characters, uppercase and lowercase letters, a digit and a special character.",
+    "passwordRules": "All characters are allowed; an empty password is not. Choose a password that is secure enough for your setup.",
     "createOwner": "Create account",
     "setupFailed": "Setup failed. Check your entries and connection."
   },

@@ -3,6 +3,7 @@
 
 import json
 import os
+import secrets
 import sys
 import tempfile
 import unittest
@@ -35,7 +36,7 @@ class SecurityApiTests(unittest.TestCase):
         self.backup_root = os.path.join(self.temp_dir.name, 'backup')
         os.makedirs(self.backup_root)
         self.sources_path = os.path.join(self.temp_dir.name, 'sources.json')
-        self.secret = 'test-secret-key-that-is-long-enough-123456789'
+        self.secret = secrets.token_urlsafe(32)
         self.patches = [
             patch.object(Config, 'SECRET_KEY', self.secret),
             patch.object(Config, 'JWT_SECRET_KEY', self.secret),
@@ -92,6 +93,19 @@ class SecurityApiTests(unittest.TestCase):
     @staticmethod
     def _headers(token):
         return {'Authorization': f'Bearer {token}'}
+
+    def test_register_accepts_unicode_without_composition_rules(self):
+        created = self.client.post(
+            '/api/v1/auth/register', headers=self._headers(self.admin_token),
+            json={'username': 'unicodeuser', 'password': '🦊', 'role': 'viewer'},
+        )
+        self.assertEqual(created.status_code, 201)
+        self._login('unicodeuser', '🦊')
+        rejected = self.client.post(
+            '/api/v1/auth/register', headers=self._headers(self.admin_token),
+            json={'username': 'blankuser', 'password': '', 'role': 'viewer'},
+        )
+        self.assertEqual(rejected.status_code, 400)
 
     def test_viewer_cannot_change_settings(self):
         response = self.client.post(

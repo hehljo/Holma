@@ -242,25 +242,6 @@ export default function Settings() {
     }
   }
 
-  const validatePassword = (password) => {
-    if (password.length < 12) {
-      return t('settings.password.minLength')
-    }
-    if (!/[A-Z]/.test(password)) {
-      return t('settings.password.uppercase')
-    }
-    if (!/[a-z]/.test(password)) {
-      return t('settings.password.lowercase')
-    }
-    if (!/\d/.test(password)) {
-      return t('settings.password.digit')
-    }
-    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-      return t('settings.password.special')
-    }
-    return null
-  }
-
   const handlePasswordChange = async (e) => {
     e.preventDefault()
     setPasswordError('')
@@ -269,13 +250,6 @@ export default function Settings() {
     // Validate passwords match
     if (passwords.newPassword !== passwords.confirmPassword) {
       setPasswordError(t('settings.password.mismatch'))
-      return
-    }
-
-    // Validate password strength
-    const validationError = validatePassword(passwords.newPassword)
-    if (validationError) {
-      setPasswordError(validationError)
       return
     }
 
@@ -612,6 +586,7 @@ export default function Settings() {
             <div>
               <label className="block text-xs md:text-sm font-medium text-gray-700 mb-2">{t('settings.newPassword')}</label>
               <input type="password" autoComplete="new-password" className="input" placeholder={t('settings.newPassword')} value={passwords.newPassword} onChange={(e) => setPasswords({...passwords, newPassword: e.target.value})} />
+              <p className="mt-1 text-xs text-gray-600">{t('settings.password.hint')}</p>
             </div>
             <div>
               <label className="block text-xs md:text-sm font-medium text-gray-700 mb-2">{t('settings.confirmPassword')}</label>

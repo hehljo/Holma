@@ -110,7 +110,6 @@ export default function Login({ onLogin }) {
               id="login-password"
               type="password"
               autoComplete={needsSetup ? 'new-password' : 'current-password'}
-              minLength={needsSetup ? 12 : undefined}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="input"

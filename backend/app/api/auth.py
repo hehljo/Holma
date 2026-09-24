@@ -19,25 +19,13 @@ auth_bp = Blueprint('auth', __name__)
 
 
 def validate_password(password):
-    """
-    Validate password strength according to best practices 2025
-    Returns: (is_valid, error_message)
-    """
-    if not isinstance(password, str) or len(password) < 12:
-        return False, "Password must be at least 12 characters long"
-
-    if not re.search(r'[A-Z]', password):
-        return False, "Password must contain at least one uppercase letter"
-
-    if not re.search(r'[a-z]', password):
-        return False, "Password must contain at least one lowercase letter"
-
-    if not re.search(r'\d', password):
-        return False, "Password must contain at least one digit"
-
-    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-        return False, "Password must contain at least one special character"
-
+    """Accept any non-empty, UTF-8-encodable password without composition rules."""
+    if not isinstance(password, str) or not password:
+        return False, "Password cannot be empty"
+    try:
+        password.encode('utf-8')
+    except UnicodeEncodeError:
+        return False, "Password contains invalid Unicode"
     return True, None
 
 
@@ -125,6 +113,8 @@ def login():
     password = data.get('password')
     if not isinstance(username, str) or not isinstance(password, str):
         return jsonify({'error': 'Missing username or password'}), 400
+    if not validate_password(password)[0]:
+        return jsonify({'error': 'Invalid credentials'}), 401
 
     user = User.query.filter_by(username=username).first()
 
@@ -156,7 +146,7 @@ def create_api_token(current_user):
         return jsonify({'error': 'Current password is required'}), 400
 
     current_password = data.get('current_password')
-    if not isinstance(current_password, str) or not check_password_hash(
+    if not validate_password(current_password)[0] or not check_password_hash(
         current_user.password_hash, current_password
     ):
         return jsonify({'error': 'Current password is incorrect'}), 403
@@ -247,7 +237,9 @@ def change_password(current_user):
     if not data or not data.get('current_password') or not data.get('new_password'):
         return jsonify({'error': 'Current and new password are required'}), 400
 
-    if not check_password_hash(current_user.password_hash, data['current_password']):
+    if not validate_password(data['current_password'])[0] or not check_password_hash(
+        current_user.password_hash, data['current_password']
+    ):
         return jsonify({'error': 'Current password is incorrect'}), 403
 
     # Validate password strength
@@ -287,7 +279,9 @@ def setup_owner():
     valid, error = validate_password(password)
     if not valid:
         return jsonify({'error': error}), 400
-    if not isinstance(confirmation, str) or not secrets.compare_digest(password, confirmation):
+    if not isinstance(confirmation, str) or not validate_password(confirmation)[0]:
+        return jsonify({'error': 'Passwords do not match'}), 400
+    if not secrets.compare_digest(password.encode('utf-8'), confirmation.encode('utf-8')):
         return jsonify({'error': 'Passwords do not match'}), 400
 
     with _app_init_lock(Config):
