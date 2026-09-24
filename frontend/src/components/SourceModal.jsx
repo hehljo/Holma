@@ -215,6 +215,8 @@ export default function SourceModal({ isOpen, onClose, onSave, editingSource }) 
   }
 
   const handleTypeChange = (type) => {
+    const sourceType = SOURCE_TYPES.find(sourceType => sourceType.value === type)
+    if (sourceType) setSelectedCategory(sourceType.category)
     setFormData(prev => ({
       ...prev,
       type,

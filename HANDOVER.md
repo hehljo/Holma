@@ -1,10 +1,9 @@
 # Handover — 24.09.2026
 
 ## Zuletzt beendet
-- Erst-Setup akzeptiert beliebige nichtleere Unicode-Passwörter; Bestätigung vergleicht UTF-8-Bytes ohne HTTP 500 bei `ß`. Anmeldung, Änderung, Registrierung und Offline-Reset decken Unicode und kurze Passwörter ab.
-- UI-Regeln DE/EN und README auf die bewusst freie Passwortwahl abgestimmt. Kein Eingriff in die DiskStation-Datenbank.
-- Lokale Gates: 83 Backend-Tests, Frontend-Lint/-Build und Ruttla ohne blockierende Befunde. Parallel wurde ein allgemeiner Python-Check in `/root/Ruttla` ergänzt.
+- `frontend/src/components/SourceModal.jsx`: Typwechsel synchronisiert die ausgewählte Kategorie; nach Suche und Wahl von GitHub zeigt die normale Liste die Git-Kategorie und den markierten Typ.
+- Realer Browsercheck gegen isoliertes lokales Backend: Suchfeld geleert, Git-Kategorie aktiv, GitHub markiert; keine Quelle gespeichert und keine DiskStation-Daten verändert.
 
 ## Exakter Startpunkt der nächsten Session
-- CI für den letzten `main`-Push prüfen. Nach grünen AMD64-/ARM64-Images auf der DiskStation BEIDE `latest`-Images neu ziehen und Container neu erstellen, ohne Daten-Volume anzufassen.
-- Im Browser die Ersteinrichtung mit `ß` testen: Konto anlegen, anmelden und Passwort später ändern. Bei Fehler nur HTTP-Status und Backend-Traceback prüfen, niemals das Passwort protokollieren.
+- CI des letzten `main`-Pushs prüfen. Nach grünem Frontend-Image in Portainer das Frontend-Image neu ziehen und den Frontend-Container neu erstellen; Daten-Volume nicht anfassen.
+- Im Quellen-Dialog auf der DiskStation „GitHub“ suchen und wählen: Git-Plattformen und GitHub müssen sichtbar markiert sein. Danach bei Bedarf andere Kategorien über Suche prüfen.
