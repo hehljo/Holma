@@ -58,8 +58,11 @@ export const authAPI = {
       new_password: newPassword,
     }),
 
-  initAdmin: () =>
-    api.post('/auth/init'),
+  setupStatus: () =>
+    api.get('/auth/setup/status'),
+
+  setupOwner: (username, password, setupCode) =>
+    api.post('/auth/setup', { username, password, setup_code: setupCode }),
 }
 
 // Backup API

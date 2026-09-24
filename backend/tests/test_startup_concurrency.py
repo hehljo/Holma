@@ -21,8 +21,8 @@ class StartupConcurrencyTests(unittest.TestCase):
             environment.update({
                 'SECRET_KEY': 'parallel-startup-test-secret-key-123456789',
                 'DATABASE_URL': f'sqlite:///{database_path}',
+                'DEFAULT_ADMIN_PASSWORD': 'LegacyPassword123!',
                 'APP_INIT_LOCK_PATH': os.path.join(temp_dir, 'init.lock'),
-                'DEFAULT_ADMIN_PASSWORD': 'Parallel-Startup-Test-123!',
                 'SOURCES_CONFIG_PATH': os.path.join(temp_dir, 'sources.json'),
                 'NOTIFICATION_CONFIG_PATH': os.path.join(
                     temp_dir, 'notifications.json'
@@ -69,7 +69,7 @@ class StartupConcurrencyTests(unittest.TestCase):
             self.assertTrue(
                 {'backups', 'backup_source_results', 'settings', 'users'} <= tables
             )
-            self.assertEqual(users, 1)
+            self.assertEqual(users, 0)
 
 
 if __name__ == '__main__':

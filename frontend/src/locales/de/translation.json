@@ -237,7 +237,17 @@
     "loginButton": "Anmelden",
     "loggingIn": "Melde an...",
     "failed": "Anmeldung fehlgeschlagen. Bitte überprüfen Sie Ihre Anmeldedaten.",
-    "defaultCredentials": "Standardanmeldedaten: admin / AdminPassword123!"
+    "statusError": "Backend nicht erreichbar. Bitte Verbindung prüfen und Seite neu laden.",
+    "setupTitle": "Ersteinrichtung",
+    "setupHelp": "Wählen Sie einen Benutzernamen und ein starkes Passwort. Den einmaligen Setup-Code erhalten Sie in der Konsole des Backend-Containers mit:",
+    "setupCommand": "python -m app.account_cli setup-code",
+    "setupCode": "Einmaliger Setup-Code",
+    "confirmPassword": "Passwort wiederholen",
+    "passwordMismatch": "Die Passwörter stimmen nicht überein.",
+    "usernameRules": "Benutzername: 3–80 Zeichen, Buchstaben, Ziffern, Punkt, Unterstrich oder Bindestrich.",
+    "passwordRules": "Passwort: mindestens 12 Zeichen, Groß- und Kleinbuchstabe, Ziffer und Sonderzeichen.",
+    "createOwner": "Konto erstellen",
+    "setupFailed": "Ersteinrichtung fehlgeschlagen. Bitte Setup-Code und Verbindung prüfen."
   },
   "common": {
     "loading": "Laden...",

@@ -47,6 +47,9 @@ class Config:
     APP_INIT_LOCK_PATH = os.environ.get(
         'APP_INIT_LOCK_PATH', '/data/.backupgenie-init.lock'
     )
+    SETUP_TOKEN_PATH = os.environ.get(
+        'SETUP_TOKEN_PATH', '/data/.holma-setup-token'
+    )
 
     # Backup Configuration
     BACKUP_BASE_PATH = os.environ.get('BACKUP_BASE_PATH', '/mnt/backup')

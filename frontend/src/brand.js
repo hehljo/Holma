@@ -18,7 +18,7 @@ export const BRAND = Object.freeze({
     'Self-hosted backup manager for 35 standard sources — NAS, Git, databases, cloud storage, Docker and Supabase.',
   repoUrl: 'https://github.com/hehljo/Holma',
   // Logo template. Swap the file, keep the path.
-  logoMark: '/logo-mark.png',
+  logoMark: '/logo.svg',
   themeColor: '#071b4a',
   backgroundColor: '#f9fafb',
 })

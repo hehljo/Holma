@@ -237,7 +237,17 @@
     "loginButton": "Login",
     "loggingIn": "Logging in...",
     "failed": "Login failed. Please check your credentials.",
-    "defaultCredentials": "Default credentials: admin / AdminPassword123!"
+    "statusError": "Backend unavailable. Check the connection and reload the page.",
+    "setupTitle": "First-time setup",
+    "setupHelp": "Choose a username and a strong password. Get the one-time setup code from the backend container console with:",
+    "setupCommand": "python -m app.account_cli setup-code",
+    "setupCode": "One-time setup code",
+    "confirmPassword": "Repeat password",
+    "passwordMismatch": "Passwords do not match.",
+    "usernameRules": "Username: 3–80 characters, letters, digits, periods, underscores or hyphens.",
+    "passwordRules": "Password: at least 12 characters, uppercase and lowercase letters, a digit and a special character.",
+    "createOwner": "Create account",
+    "setupFailed": "Setup failed. Check the setup code and connection."
   },
   "common": {
     "loading": "Loading...",

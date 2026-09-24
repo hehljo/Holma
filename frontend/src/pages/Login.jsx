@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { authAPI } from '../services/api'
 import { useTranslation } from 'react-i18next'
@@ -10,20 +10,41 @@ export default function Login({ onLogin }) {
   const { t } = useTranslation()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [setupCode, setSetupCode] = useState('')
+  const [needsSetup, setNeedsSetup] = useState(null)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    authAPI.setupStatus()
+      .then(({ data }) => { if (active) setNeedsSetup(data.needs_setup) })
+      .catch(() => { if (active) setError(t('login.statusError')) })
+    return () => { active = false }
+  }, [t])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    if (needsSetup && password !== confirmPassword) {
+      setError(t('login.passwordMismatch'))
+      return
+    }
     setIsLoading(true)
 
     try {
+      if (needsSetup) {
+        await authAPI.setupOwner(username, password, setupCode)
+      }
       const response = await authAPI.login(username, password)
       localStorage.setItem('token', response.data.access_token)
       onLogin()
     } catch (err) {
-      setError(err.response?.data?.error || t('login.failed'))
+      setError(err.response?.data?.error || t(needsSetup ? 'login.setupFailed' : 'login.failed'))
+      if (needsSetup) {
+        authAPI.setupStatus().then(({ data }) => setNeedsSetup(data.needs_setup)).catch(() => {})
+      }
     } finally {
       setIsLoading(false)
     }
@@ -44,6 +65,14 @@ export default function Login({ onLogin }) {
           <p className="text-gray-600 mt-2">{t('app.tagline')}</p>
         </div>
 
+        {needsSetup && (
+          <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            <p className="font-semibold">{t('login.setupTitle')}</p>
+            <p className="mt-2">{t('login.setupHelp')}</p>
+            <p className="mt-2 font-mono break-all">{t('login.setupCommand')}</p>
+          </div>
+        )}
+
         {/* Error message */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
@@ -53,13 +82,19 @@ export default function Login({ onLogin }) {
         )}
 
         {/* Login form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {needsSetup !== null && <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="login-username" className="block text-sm font-medium text-gray-700 mb-2">
               {t('login.username')}
             </label>
             <input
+              id="login-username"
               type="text"
+              autoComplete="username"
+              minLength={needsSetup ? 3 : undefined}
+              maxLength={needsSetup ? 80 : undefined}
+              pattern={needsSetup ? '[A-Za-z0-9_.-]{3,80}' : undefined}
+              title={needsSetup ? t('login.usernameRules') : undefined}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="input"
@@ -70,11 +105,14 @@ export default function Login({ onLogin }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 mb-2">
               {t('login.password')}
             </label>
             <input
+              id="login-password"
               type="password"
+              autoComplete={needsSetup ? 'new-password' : 'current-password'}
+              minLength={needsSetup ? 12 : undefined}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="input"
@@ -84,21 +122,26 @@ export default function Login({ onLogin }) {
             />
           </div>
 
-          <button
-            type="submit"
-            className="btn btn-primary w-full mt-6"
-            disabled={isLoading}
-          >
-            {isLoading ? t('login.loggingIn') : t('login.loginButton')}
+          {needsSetup && (
+            <>
+              <p className="text-sm text-gray-600">{t('login.usernameRules')}</p>
+              <p className="text-sm text-gray-600">{t('login.passwordRules')}</p>
+              <div>
+                <label htmlFor="login-confirm" className="block text-sm font-medium text-gray-700 mb-2">{t('login.confirmPassword')}</label>
+                <input id="login-confirm" type="password" autoComplete="new-password" className="input"
+                  value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required disabled={isLoading} />
+              </div>
+              <div>
+                <label htmlFor="login-code" className="block text-sm font-medium text-gray-700 mb-2">{t('login.setupCode')}</label>
+                <input id="login-code" type="password" autoComplete="off" className="input"
+                  value={setupCode} onChange={(e) => setSetupCode(e.target.value)} required disabled={isLoading} />
+              </div>
+            </>
+          )}
+          <button type="submit" className="btn btn-primary w-full mt-6" disabled={isLoading}>
+            {isLoading ? t('login.loggingIn') : t(needsSetup ? 'login.createOwner' : 'login.loginButton')}
           </button>
-        </form>
-
-        {/* Info */}
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800">
-            {t('login.defaultCredentials')}
-          </p>
-        </div>
+        </form>}
       </div>
     </div>
   )

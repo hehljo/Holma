@@ -182,33 +182,6 @@ def create_app(config_class=Config):
                     [table.name for table in tables_to_create],
                 )
 
-            # Bootstrap admin user if no users exist
-            from app.models.backup import User
-            from werkzeug.security import generate_password_hash
-            from sqlalchemy.exc import IntegrityError
-
-            try:
-                if User.query.count() == 0:
-                    import secrets
-                    configured_password = os.environ.get('DEFAULT_ADMIN_PASSWORD')
-                    default_password = configured_password or secrets.token_urlsafe(18)
-                    admin = User(
-                        username='admin',
-                        password_hash=generate_password_hash(default_password)
-                    )
-                    db.session.add(admin)
-                    db.session.commit()
-                    if configured_password:
-                        print("[INIT] Admin user created with configured password.")
-                    else:
-                        print(f"[INIT] Admin user created. Password: {default_password}")
-                    app.logger.info(
-                        "Bootstrap: Admin user created. Check container stdout for password."
-                    )
-            except IntegrityError:
-                db.session.rollback()
-                app.logger.info("Bootstrap: Admin user already exists, skipping creation")
-
             # One-time, atomic migration of legacy plaintext source credentials.
             from app.source_config import migrate_source_secrets
             migrate_source_secrets()
