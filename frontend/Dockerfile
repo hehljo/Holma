@@ -1,5 +1,6 @@
 # Frontend Dockerfile for Holma
-FROM node:22-alpine AS build
+# Static assets are architecture-independent; run Node on the native builder.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 
 WORKDIR /app
 
