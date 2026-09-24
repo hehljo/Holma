@@ -126,15 +126,11 @@ nano .env  # Set SECRET_KEY to the generated value
 # 3. Start the services
 docker compose up -d
 
-# 4. Open the Web UI and choose your own username and password
+# 4. Open the Web UI on your trusted local network and create the first account
 open http://localhost:3000
-
-# 5. Get the one-time setup code from the backend container console
-# (do not share the code or put it in logs)
-docker compose exec backend python -m app.account_cli setup-code
 ```
 
-**First login:** enter the one-time setup code from step 5 and choose your own username and strong password in the Web UI. No default account or password is created. Existing installations keep their accounts. All source credentials are managed via the Web UI.
+**First login:** choose your own username and enter a strong password twice in the Web UI. No default account or password is created. Keep the app accessible only to your trusted local network during initial setup: the first visitor can claim the owner account while the database is empty. Existing installations keep their accounts. All source credentials are managed via the Web UI.
 
 ---
 
@@ -204,7 +200,7 @@ FRONTEND_PORT=3080
 http://diskstation-ip:3080
 ```
 
-**First-time setup:** choose your own username and strong password in the Web UI. In Portainer, open the `holma-backend` container **Console** (`/bin/sh`) and run `python -m app.account_cli setup-code`. Enter the one-time code in the setup form. The code is not printed in backend logs; no default `admin` password exists. Keep the code private. If the container has no console access, run `docker exec holma-backend python -m app.account_cli setup-code` on the Docker host.
+**First-time setup:** choose your own username and enter a strong password twice in the Web UI. No default `admin` password exists. Keep the app on your trusted local network until the first account is created: whoever visits first can claim the owner account while the database is empty. Do not expose an uninitialized installation to the internet or untrusted VPN users.
 
 **Existing installations:** persisted accounts remain unchanged; the setup form is unavailable once an account exists. If the password is lost, open the backend container console and run `python -m app.account_cli list-users`, then `python -m app.account_cli reset-password YOUR_USERNAME`. The new password is entered interactively and previous login/automation tokens are revoked. No email server or internet access is required. Do not delete the data volume to reset an account.
 
@@ -424,7 +420,7 @@ The `.env` file itself is optional for this Portainer method; `SECRET_KEY` is no
 
 > **Credentials** (GitHub token, NAS passwords, Supabase keys etc.) are **not** set via environment variables — manage them through the Web UI under **Settings → Credentials**. They are stored AES-encrypted in the database.
 
-**First login:** choose a username and password in the Web UI; get the one-time code locally with `docker compose exec backend python -m app.account_cli setup-code`. Existing accounts remain valid. For offline recovery, use `docker compose exec backend python -m app.account_cli list-users` and `docker compose exec -it backend python -m app.account_cli reset-password YOUR_USERNAME`.
+**First login:** on a trusted local network, choose a username and enter the password twice in the Web UI. Existing accounts remain valid. For offline recovery, use `docker compose exec backend python -m app.account_cli list-users` and `docker compose exec -it backend python -m app.account_cli reset-password YOUR_USERNAME`.
 
 ### 💾 Data Persistence (Docker Volumes)
 
@@ -589,7 +585,7 @@ If you've tested a source, please [share your setup](https://github.com/hehljo/H
 ## 🛠️ Recent Fixes
 
 - **Safe Cloud Copies:** rclone sources now use non-deleting `copy`; source-side removals no longer delete files from the backup destination.
-- **Reliable Container Startup:** database initialization is serialized across Gunicorn workers and the backup worker; first-run owner setup requires a local one-time code.
+- **Reliable Container Startup:** database initialization is serialized across Gunicorn workers and the backup worker; first-run owner setup is allowed only while no account exists.
 - **Automation Tokens:** USB/systemd jobs can use password-bound tokens that expire after at most 365 days and are revoked by password changes.
 - **Adaptive UI:** The web UI now has consistent touch targets, visible focus states, responsive page shells, mobile-friendly drawers, bottom-sheet modals, and safer wrapping for backup/source lists.
 - **One Archive per Run:** Every backup run becomes exactly one timestamped version per source, and the newest **3** are kept by default (configurable). Small sources (GitHub, GitLab, Gitea, databases, Supabase, Docker, self-hosted apps) become one `.tar.gz` per run with one archive per repository inside. Large file sources (NFS, rsync, rclone, FTP/SFTP, WebDAV, local folders) become snapshot folders where unchanged files are hard links, so three versions of a 100 GB share cost 100 GB plus the changes. NAS via SMB and Proxmox dumps are already one full archive per run and are stored as-is in a timestamped folder (no second compression) — with SMB, each version is a full copy. Failed runs never replace a good version.

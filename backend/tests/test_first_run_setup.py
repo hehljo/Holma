@@ -26,7 +26,6 @@ class FirstRunTests(unittest.TestCase):
             patch.object(Config, 'SECRET_KEY', 'first-run-test-secret-key-123456789'),
             patch.object(Config, 'JWT_SECRET_KEY', 'first-run-test-secret-key-123456789'),
             patch.object(Config, 'APP_INIT_LOCK_PATH', f'{root}/init.lock'),
-            patch.object(Config, 'SETUP_TOKEN_PATH', f'{root}/setup-token'),
             patch.object(Config, 'SOURCES_CONFIG_PATH', f'{root}/sources.json'),
             patch.dict(os.environ, {'NOTIFICATION_CONFIG_PATH': f'{root}/notifications.json'}),
             patch.object(Config, 'LOG_FILE', f'{root}/app.log'),
@@ -53,34 +52,39 @@ class FirstRunTests(unittest.TestCase):
             main()
         return output.getvalue().strip()
 
-    def test_first_run_requires_local_code_and_does_not_reopen(self):
+    @staticmethod
+    def owner_data(name='owner', password='SafePassword123!'):
+        return {
+            'username': name, 'password': password,
+            'confirm_password': password,
+        }
+
+    def test_first_run_requires_confirmation_and_does_not_reopen(self):
         self.assertTrue(self.client.get('/api/v1/auth/setup/status').json['needs_setup'])
-        payload = {'username': 'owner', 'password': 'SafePassword123!', 'setup_code': 'wrong'}
-        self.assertEqual(self.client.post('/api/v1/auth/setup', json=payload).status_code, 403)
-        code = self.command('setup-code')
-        self.assertTrue(code)
-        self.assertEqual(code, self.command('setup-code'))
-        self.assertEqual(os.stat(Config.SETUP_TOKEN_PATH).st_mode & 0o777, 0o600)
-        payload['setup_code'] = code
+        payload = self.owner_data()
+        del payload['confirm_password']
+        self.assertEqual(self.client.post('/api/v1/auth/setup', json=payload).status_code, 400)
+        payload['confirm_password'] = 'DifferentPassword123!'
+        self.assertEqual(self.client.post('/api/v1/auth/setup', json=payload).status_code, 400)
+        payload['confirm_password'] = payload['password']
         self.assertEqual(self.client.post('/api/v1/auth/setup', json=payload).status_code, 201)
         self.assertFalse(self.client.get('/api/v1/auth/setup/status').json['needs_setup'])
-        self.assertEqual(self.client.post('/api/v1/auth/setup', json={
-            'username': 'attacker', 'password': 'SafePassword123!', 'setup_code': code,
-        }).status_code, 409)
-        with self.assertRaises(SystemExit):
-            self.command('setup-code')
+        self.assertEqual(self.client.post('/api/v1/auth/setup', json=self.owner_data('other')).status_code, 409)
         self.assertEqual(self.client.post('/api/v1/auth/login', json={
-            'username': 'owner', 'password': 'SafePassword123!',
+            'username': 'owner', 'password': payload['password'],
         }).status_code, 200)
+        # A container restart with the same database must not re-open first-run setup.
+        restarted = create_app()
+        restarted.config['RATELIMIT_ENABLED'] = False
+        self.assertFalse(restarted.test_client().get('/api/v1/auth/setup/status').json['needs_setup'])
+        with restarted.app_context():
+            db.session.remove()
+            db.engine.dispose()
 
     def test_concurrent_setup_creates_exactly_one_owner(self):
-        code = self.command('setup-code')
-
         def setup(name):
             with self.app.test_client() as client:
-                return client.post('/api/v1/auth/setup', json={
-                    'username': name, 'password': 'SafePassword123!', 'setup_code': code,
-                }).status_code
+                return client.post('/api/v1/auth/setup', json=self.owner_data(name)).status_code
 
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(setup, ('owner_a', 'owner_b')))
@@ -89,11 +93,9 @@ class FirstRunTests(unittest.TestCase):
             self.assertEqual(User.query.count(), 1)
 
     def test_setup_validation_and_offline_password_reset_revokes_token(self):
-        code = self.command('setup-code')
-        payload = {'username': 'owner', 'password': 'weak', 'setup_code': code}
-        self.assertEqual(self.client.post('/api/v1/auth/setup', json=payload).status_code, 400)
-        payload['password'] = 'SafePassword123!'
-        self.assertEqual(self.client.post('/api/v1/auth/setup', json=payload).status_code, 201)
+        self.assertEqual(self.client.post('/api/v1/auth/setup', json=self.owner_data('owner', 'weak')).status_code, 400)
+        self.assertEqual(self.client.post('/api/v1/auth/setup', json=self.owner_data('!invalid')).status_code, 400)
+        self.assertEqual(self.client.post('/api/v1/auth/setup', json=self.owner_data()).status_code, 201)
         login = self.client.post('/api/v1/auth/login', json={
             'username': 'owner', 'password': 'SafePassword123!',
         })

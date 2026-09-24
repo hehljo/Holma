@@ -11,7 +11,6 @@ export default function Login({ onLogin }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [setupCode, setSetupCode] = useState('')
   const [needsSetup, setNeedsSetup] = useState(null)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -35,7 +34,7 @@ export default function Login({ onLogin }) {
 
     try {
       if (needsSetup) {
-        await authAPI.setupOwner(username, password, setupCode)
+        await authAPI.setupOwner(username, password, confirmPassword)
       }
       const response = await authAPI.login(username, password)
       localStorage.setItem('token', response.data.access_token)
@@ -69,7 +68,6 @@ export default function Login({ onLogin }) {
           <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
             <p className="font-semibold">{t('login.setupTitle')}</p>
             <p className="mt-2">{t('login.setupHelp')}</p>
-            <p className="mt-2 font-mono break-all">{t('login.setupCommand')}</p>
           </div>
         )}
 
@@ -130,11 +128,6 @@ export default function Login({ onLogin }) {
                 <label htmlFor="login-confirm" className="block text-sm font-medium text-gray-700 mb-2">{t('login.confirmPassword')}</label>
                 <input id="login-confirm" type="password" autoComplete="new-password" className="input"
                   value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required disabled={isLoading} />
-              </div>
-              <div>
-                <label htmlFor="login-code" className="block text-sm font-medium text-gray-700 mb-2">{t('login.setupCode')}</label>
-                <input id="login-code" type="password" autoComplete="off" className="input"
-                  value={setupCode} onChange={(e) => setSetupCode(e.target.value)} required disabled={isLoading} />
               </div>
             </>
           )}

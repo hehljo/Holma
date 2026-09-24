@@ -2,7 +2,8 @@
 
 ## Done
 - [x] CI: Frontend-Multiarch-Build führt Node auf der nativen Builder-Architektur aus statt ARM64-`npm ci` unter QEMU
-- [x] Security/UI: Offline-Ersteinrichtung mit frei wählbarem Konto und lokalem Einmal-Code, Container-Passwort-Reset, README und SVG-Logo-Anzeige korrigiert
+- [x] UI: Lokalen Setup-Code für reine LAN-Ersteinrichtung entfernt; Benutzername und Passwortbestätigung im Browser, Offline-Reset weiterhin über Backend-Konsole
+- [x] Security/UI: Offline-Ersteinrichtung mit frei wählbarem Konto, Container-Passwort-Reset, README und SVG-Logo-Anzeige korrigiert
 - [x] UI: Neues Holma-Vektorlogo in Holma-Blau (#0284c7) implementiert, abgeleitete PWA-/Favicon-/App-Icons generiert und Dark Mode adaptiert
 - [x] Fix: rclone-Backups verwenden nicht-löschendes `copy` statt zielbereinigendem `sync`
 - [x] Security: Passwortgebundene Automation-Tokens mit 365-Tage-Limit und Widerruf bei Passwortänderung ergänzt

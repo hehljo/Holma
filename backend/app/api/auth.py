@@ -14,7 +14,6 @@ from app import db, limiter, _app_init_lock
 from app.models.backup import Setting, User
 from app.config import Config
 from app.time_utils import utc_now_naive
-from app.setup_access import read_setup_token
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -269,34 +268,31 @@ def change_password(current_user):
 @auth_bp.route('/setup/status', methods=['GET'])
 @limiter.limit("30 per minute")
 def setup_status():
-    """Expose only whether first-run setup is required, never the setup code."""
+    """Expose only whether first-run setup is required."""
     return jsonify({'needs_setup': db.session.query(User.id).first() is None}), 200
 
 
 @auth_bp.route('/setup', methods=['POST'])
-@limiter.limit("3 per hour")
+@limiter.limit("5 per minute")
 def setup_owner():
-    """Create the first owner only with a code read locally from the container."""
+    """Create the first owner only while the database has no accounts."""
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify({'error': 'Invalid setup request'}), 400
     username = data.get('username')
     password = data.get('password')
-    code = data.get('setup_code')
+    confirmation = data.get('confirm_password')
     if not isinstance(username, str) or not re.fullmatch(r'[A-Za-z0-9_.-]{3,80}', username):
         return jsonify({'error': 'Invalid username'}), 400
     valid, error = validate_password(password)
     if not valid:
         return jsonify({'error': error}), 400
-    if not isinstance(code, str) or len(code) > 256:
-        return jsonify({'error': 'Invalid setup code'}), 403
+    if not isinstance(confirmation, str) or not secrets.compare_digest(password, confirmation):
+        return jsonify({'error': 'Passwords do not match'}), 400
 
     with _app_init_lock(Config):
         if db.session.query(User.id).first() is not None:
             return jsonify({'error': 'Setup already completed'}), 409
-        expected = read_setup_token()
-        if not expected or not secrets.compare_digest(code, expected):
-            return jsonify({'error': 'Invalid setup code'}), 403
         owner = User(username=username, password_hash=generate_password_hash(password))
         db.session.add(owner)
         db.session.commit()

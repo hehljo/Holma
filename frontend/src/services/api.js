@@ -61,8 +61,8 @@ export const authAPI = {
   setupStatus: () =>
     api.get('/auth/setup/status'),
 
-  setupOwner: (username, password, setupCode) =>
-    api.post('/auth/setup', { username, password, setup_code: setupCode }),
+  setupOwner: (username, password, confirmPassword) =>
+    api.post('/auth/setup', { username, password, confirm_password: confirmPassword }),
 }
 
 // Backup API
